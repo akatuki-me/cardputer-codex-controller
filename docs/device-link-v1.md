@@ -2,6 +2,8 @@
 
 本書はM1〜M2で実測して確定するdraftです。
 
+Host bridge MVPはframing、方向別byte上限、単調増加`seq`、未知`t`と過去`seq`の安全無視を実装しています。合成デモだけを対象とし、実portでの検証は未実施です。
+
 ## Framing
 
 - UTF-8 NDJSON、1行1message、LF終端

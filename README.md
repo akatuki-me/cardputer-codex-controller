@@ -49,10 +49,22 @@ python -m build
 
 作業はIssueから開始し、1 Issue = 1 branch = 1 PRとします。詳しくは[CONTRIBUTING.md](CONTRIBUTING.md)を参照してください。
 
+## 合成デモ
+
+実機やserial portを使わず、host controllerの縦切りを再現できます。
+
+```powershell
+python -m pip install -e .
+cardputer-codex-controller demo
+```
+
+このデモはdevice hello、6 slotのfull snapshot、turnの開始・実行・完了、interrupt、承認の保留とhost解決、安全guardを順に表示します。出力中の`codexConnection`は`N/A`です。Codex app-serverとの実接続は後続Issueでadapterへ統合し、実portは開きません。
+
 ## 状態
 
 - 公開開発基盤: 準備中
-- M0 Host app-server proof: 未着手
+- M0 Host app-server transport: 実装済み
+- Host controller合成デモ: 実装済み（Codex実接続は未統合）
 - 実機書き込み: 未承認・未実施
 
 ## 免責
