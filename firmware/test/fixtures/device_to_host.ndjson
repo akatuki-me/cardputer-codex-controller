@@ -1,0 +1,4 @@
+{"device":"cardputer-adv","firmware":"0.1.0","proto":1,"seq":1,"t":"hello"}
+{"seq":2,"t":"pong"}
+{"seq":3,"slot":1,"t":"interrupt","turnId":"turn-fixture-1"}
+{"decision":"decline","deviceApprovalId":"approval-fixture-1","seq":4,"t":"decision"}

@@ -45,6 +45,8 @@ python -m mypy bridge/cardputer_codex_bridge
 python -m ruff check .
 python -m pytest
 python -m build
+python -m platformio test -d firmware -e native
+python -m platformio run -d firmware -e cardputer_adv
 ```
 
 作業はIssueから開始し、1 Issue = 1 branch = 1 PRとします。詳しくは[CONTRIBUTING.md](CONTRIBUTING.md)を参照してください。
@@ -68,11 +70,23 @@ cardputer-codex-controller codex-demo
 
 このcommandもhardwareやserial portには接続しません。
 
+## Firmware build
+
+Cardputer-Adv向けfirmwareは、実機やserial portへ接続せずにbuildできます。
+
+```powershell
+python -m platformio test -d firmware -e native
+python -m platformio run -d firmware -e cardputer_adv
+```
+
+生成されるapplication imageは`firmware/.pio/build/cardputer_adv/firmware.bin`です。このrepositoryはbuildとnative fixtureだけを通常gateに含め、upload、flash read/write、port openを実行しません。
+
 ## 状態
 
 - 公開開発基盤: 実装済み
 - M0 Host app-server transport・thread/turn操作: 実装済み
 - Host controller合成デモ: 実装済み（実Codex eventとのreducer統合は未実装）
+- Cardputer-Adv firmware MVP: build・native fixture実装済み（実機未検証）
 - M0 approval・multi-client・ADR: 継続中
 - 実機書き込み: 未承認・未実施
 

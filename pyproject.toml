@@ -20,6 +20,7 @@ cardputer-codex-controller = "cardputer_codex_bridge.cli:main"
 dev = [
   "build>=1.2,<2",
   "mypy>=1.11,<2",
+  "platformio==6.1.18",
   "pytest>=8,<9",
   "ruff>=0.9,<1",
 ]

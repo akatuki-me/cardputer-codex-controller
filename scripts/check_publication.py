@@ -80,6 +80,7 @@ CONTENT_PATTERNS = {
 SKIPPED_PARTS = {
     ".git",
     ".mypy_cache",
+    ".pio",
     ".pytest_cache",
     ".ruff_cache",
     ".venv",

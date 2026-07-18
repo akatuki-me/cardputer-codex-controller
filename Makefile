@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install typecheck lint test build ci dev fixture publication-check
+.PHONY: install typecheck lint test build firmware-test firmware-build ci dev fixture publication-check
 
 install:
 	$(PYTHON) -m pip install -e ".[dev]"
@@ -17,10 +17,16 @@ test:
 build:
 	$(PYTHON) -m build
 
+firmware-test:
+	$(PYTHON) -m platformio test -d firmware -e native
+
+firmware-build:
+	$(PYTHON) -m platformio run -d firmware -e cardputer_adv
+
 publication-check:
 	$(PYTHON) scripts/check_publication.py
 
-ci: publication-check typecheck lint test build
+ci: publication-check typecheck lint test build firmware-test firmware-build
 
 dev:
 	@echo "M0 app-server client is not implemented yet."
