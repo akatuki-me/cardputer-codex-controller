@@ -16,4 +16,4 @@ Python 3.12で、Codex app-serverのstdio JSONLとCardputer-AdvのUSB CDC/NDJSON
 cardputer-codex-controller demo
 ```
 
-合成adapterを使用するため`codexConnection`は`N/A`で、実portは開きません。`HostCommandAdapter`境界へapp-server操作を接続する作業は後続Issueで行います。
+合成adapterを使用するため`codexConnection`は`N/A`で、実portは開きません。`codex-demo`はapp-server操作を独立に実測します。`HostCommandAdapter`境界へ実Codex eventを接続する作業は後続Issueで行います。

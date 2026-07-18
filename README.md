@@ -58,13 +58,21 @@ python -m pip install -e .
 cardputer-codex-controller demo
 ```
 
-このデモはdevice hello、6 slotのfull snapshot、turnの開始・実行・完了、interrupt、承認の保留とhost解決、安全guardを順に表示します。出力中の`codexConnection`は`N/A`です。Codex app-serverとの実接続は後続Issueでadapterへ統合し、実portは開きません。
+このデモはdevice hello、6 slotのfull snapshot、turnの開始・実行・完了、interrupt、承認の保留とhost解決、安全guardを順に表示します。合成デモ出力中の`codexConnection`は`N/A`です。実Codex eventを同じstate reducerへ流す統合は後続Issueで行い、実portは開きません。
+
+認証済みCodex CLIとの実接続は、次の1 commandで確認できます。一時workspace、ephemeral thread、`sandbox=read-only`、`approvalPolicy=never`を使い、ID、prompt、model名、pathは出力しません。
+
+```powershell
+cardputer-codex-controller codex-demo
+```
+
+このcommandもhardwareやserial portには接続しません。
 
 ## 状態
 
 - 公開開発基盤: 準備中
 - M0 Host app-server transport: 実装済み
-- Host controller合成デモ: 実装済み（Codex実接続は未統合）
+- Host controller合成デモ: 実装済み（実Codex eventとのreducer統合は未実装）
 - 実機書き込み: 未承認・未実施
 
 ## 免責
