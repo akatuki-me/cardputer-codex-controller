@@ -75,8 +75,9 @@ CIでは合成app-server processを使い、次を認証済みCodexから独立�
 ## 未検証
 
 - LinuxおよびmacOS上の実Codex CLI
-- thread、turn、model、approvalの各method
+- approvalの各method
 - app-server daemon、WebSocket、Unix socket
 - 複数clientと再接続
 
-これらをPASSとして扱わず、後続のM0 Issueで個別に実測する。
+thread、turn、modelの実測結果は`app-server-operations.md`へ分離した。上記はPASSとして
+扱わず、後続のM0 Issueで個別に実測する。

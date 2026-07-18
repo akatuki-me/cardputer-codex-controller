@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from cardputer_codex_bridge.models import ThreadId, TurnId
+
 from .types import RequestId
 
 
@@ -17,6 +19,15 @@ class AppServerShutdownError(AppServerError):
 
 class AppServerStateError(AppServerError):
     """An operation was attempted in an invalid lifecycle state."""
+
+
+class ActiveTurnRequiredError(AppServerStateError):
+    """The requested turn is not the active turn for its thread."""
+
+    def __init__(self, *, thread_id: ThreadId, turn_id: TurnId) -> None:
+        self.thread_id = thread_id
+        self.turn_id = turn_id
+        super().__init__("operation requires the matching active turn")
 
 
 class AppServerProtocolError(AppServerError):
