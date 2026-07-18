@@ -14,10 +14,19 @@
 - 2件目のpendingが表示中requestを差し替えない
 - `model/list`失敗・空・model不一致時にeffort変更を無効化する
 - service down時にresponse、steer、interrupt、effort変更をlockする
+- provider injectionしたserial read threadがNDJSON、ping/pong、stale、再接続を処理する
+- 再接続ごとに`hello`とfull snapshotを再送する
+- 合成deviceの重複`interrupt`をactive turnへ一度だけ転送する
 
 ## Protocol fixtures
 
 fixtureは合成ID、相対path、架空workspace名だけを使用します。認証済みCodexや実機を必要とする試験はGitHub Actionsへ入れず、local acceptance evidenceとして記録します。
+
+## Local E2E
+
+`cardputer-codex-controller e2e --synthetic`は認証済みCodexと合成USB CDCを接続します。出力はstep名とPASS/FAIL classだけに限定し、ID、prompt、model、path、portを含めません。
+
+`e2e --port`または`e2e --port-handle`で実portを選択できますが、承認前は`--dry-run`だけを実行します。dry-runはserial I/OとCodexを起動しません。実port未使用の結果はhardware PASSへ昇格しません。
 
 ## Hardware tests
 

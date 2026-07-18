@@ -60,7 +60,7 @@ python -m pip install -e .
 cardputer-codex-controller demo
 ```
 
-このデモはdevice hello、6 slotのfull snapshot、turnの開始・実行・完了、interrupt、承認の保留とhost解決、安全guardを順に表示します。合成デモ出力中の`codexConnection`は`N/A`です。実Codex eventを同じstate reducerへ流す統合は後続Issueで行い、実portは開きません。
+このデモはdevice hello、6 slotのfull snapshot、turnの開始・実行・完了、interrupt、承認の保留とhost解決、安全guardを順に表示します。合成デモ出力中の`codexConnection`は`N/A`です。
 
 認証済みCodex CLIとの実接続は、次の1 commandで確認できます。一時workspace、ephemeral thread、`sandbox=read-only`、`approvalPolicy=never`を使い、ID、prompt、model名、pathは出力しません。
 
@@ -81,12 +81,32 @@ python -m platformio run -d firmware -e cardputer_adv
 
 生成されるapplication imageは`firmware/.pio/build/cardputer_adv/firmware.bin`です。このrepositoryはbuildとnative fixtureだけを通常gateに含め、upload、flash read/write、port openを実行しません。
 
+## USB CDC E2E harness
+
+認証済みCodex app-server、host state reducer、合成USB CDCを1本につなぎ、Cardputerから届いた想定の`interrupt`がactive turnへ一度だけ転送されることを確認できます。
+
+```powershell
+cardputer-codex-controller e2e --synthetic
+```
+
+合成CDCはdevice `hello`、重複`interrupt`、host側のNDJSONをmemory内で往復させます。実portは開かず、出力にはthread ID、turn ID、prompt、model、pathを含めません。
+
+実portは`--port`またはGit管理外の1行fileを指す`--port-handle`で明示選択します。初回openの承認前は`--dry-run`を必ず付けます。dry-runは選択だけを検証し、serial I/OとCodexを起動しません。
+
+```powershell
+cardputer-codex-controller e2e --port-handle local-private/device-port.txt --dry-run
+```
+
+`--dry-run`を外す操作はhardware承認ゲートの対象です。実portを使ったE2Eは未検証であり、合成E2EのPASSを実機PASSとして扱いません。
+
 ## 状態
 
 - 公開開発基盤: 実装済み
 - M0 Host app-server transport・thread/turn操作: 実装済み
-- Host controller合成デモ: 実装済み（実Codex eventとのreducer統合は未実装）
+- Host controller合成デモ: 実装済み
+- 実Codex・合成USB CDC E2E: 実装済み
 - Cardputer-Adv firmware MVP: build・native fixture実装済み（実機未検証）
+- 実USB CDC E2E: 未検証
 - M0 approval・multi-client・ADR: 継続中
 - 実機書き込み: 未承認・未実施
 

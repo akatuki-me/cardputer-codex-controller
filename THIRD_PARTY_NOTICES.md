@@ -12,7 +12,7 @@
 - IRremote 4.7.1: Arduino-IRremote contributors、MIT License、vendoringしない
 - PlatformIO Core 6.1.18: PlatformIO、Apache License 2.0、開発依存のみ
 - PlatformIO Espressif32 6.7.0: PlatformIO、Apache License 2.0、build時に取得
-- pyserial
+- pyserial 3.5: pyserial/pyserialおよびPyPI、BSD-3-Clause License、vendorなし
 
 公開境界のCIではGitleaks 8.30.1（MIT License）を公式releaseからchecksum固定で取得して使用します。binaryはrepositoryへ同梱しません。
 
