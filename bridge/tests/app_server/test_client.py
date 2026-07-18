@@ -13,6 +13,7 @@ from cardputer_codex_bridge.app_server import (
     AppServerClient,
     AppServerClosedError,
     AppServerProtocolError,
+    AppServerShutdownError,
     AppServerStartError,
     AppServerState,
     AppServerStateError,
@@ -226,7 +227,23 @@ def test_sensitive_host_environment_is_not_inherited(
     monkeypatch.setenv("GH_TOKEN", "fixture-gh-token")
     monkeypatch.setenv("GITHUB_TOKEN", "fixture-github-token")
     monkeypatch.setenv("OPENAI_API_KEY", "fixture-openai-key")
+    monkeypatch.setenv("DATABASE_URL", "fixture-database-url")
+    monkeypatch.setenv("DOCKER_AUTH_CONFIG", "fixture-docker-auth")
+    monkeypatch.setenv("SESSION_COOKIE", "fixture-session-cookie")
     client = _client("environment")
+    client.start()
+    try:
+        result = client.initialize(CLIENT_INFO)
+        assert result.codex_version == "0.144.5"
+    finally:
+        client.close()
+
+
+def test_non_allowlisted_environment_can_be_explicitly_overridden() -> None:
+    client = AppServerClient(
+        command=(sys.executable, "-u", str(FAKE_SERVER), "explicit-environment"),
+        env={"DATABASE_URL": "fixture-database-url"},
+    )
     client.start()
     try:
         result = client.initialize(CLIENT_INFO)
@@ -355,6 +372,96 @@ def test_early_eof_fails_the_pending_initialize() -> None:
         client.close()
 
 
+def test_next_message_raises_closed_error_immediately_on_stdout_eof() -> None:
+    client = _client("eof-after-initialized", request_timeout=2.0)
+    client.start()
+    try:
+        client.initialize(CLIENT_INFO)
+        started = time.monotonic()
+
+        with pytest.raises(AppServerClosedError):
+            client.next_message(timeout=2.0)
+
+        assert time.monotonic() - started < 1.0
+    finally:
+        client.close()
+
+
+def test_next_message_reraises_protocol_error_without_waiting_for_timeout() -> None:
+    client = _client(
+        "invalid-after-initialized",
+        request_timeout=2.0,
+        shutdown_timeout=0.05,
+    )
+    client.start()
+    try:
+        client.initialize(CLIENT_INFO)
+        started = time.monotonic()
+
+        with pytest.raises(AppServerProtocolError, match="non-JSON"):
+            client.next_message(timeout=2.0)
+
+        assert time.monotonic() - started < 1.0
+    finally:
+        client.close()
+
+
+def test_close_wakes_a_blocked_next_message_consumer() -> None:
+    client = _client("normal", request_timeout=2.0)
+    waiting = threading.Event()
+    errors: list[Exception] = []
+    client.start()
+    client.initialize(CLIENT_INFO)
+
+    def wait_for_message() -> None:
+        waiting.set()
+        try:
+            client.next_message(timeout=2.0)
+        except Exception as error:
+            errors.append(error)
+
+    consumer = threading.Thread(target=wait_for_message)
+    consumer.start()
+    assert waiting.wait(1.0)
+    time.sleep(0.05)
+
+    started = time.monotonic()
+    client.close()
+    consumer.join(timeout=1.0)
+
+    assert not consumer.is_alive()
+    assert time.monotonic() - started < 1.0
+    assert len(errors) == 1
+    assert isinstance(errors[0], AppServerClosedError)
+
+
+@pytest.mark.parametrize(
+    ("mode", "constant_name", "stream_name"),
+    [
+        ("oversized-stdout", "_MAX_STDOUT_LINE_CHARS", "stdout"),
+        ("oversized-stderr", "_MAX_STDERR_LINE_CHARS", "stderr"),
+    ],
+)
+def test_oversized_child_line_is_fatal_and_process_is_reaped(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    constant_name: str,
+    stream_name: str,
+) -> None:
+    monkeypatch.setattr(client_module, constant_name, 128)
+    client = _client(mode, request_timeout=1.0, shutdown_timeout=0.05)
+    client.start()
+
+    with pytest.raises(AppServerProtocolError, match=f"{stream_name} line exceeds"):
+        client.initialize(CLIENT_INFO)
+
+    shutdown = client.close()
+
+    assert shutdown.forced is True
+    assert client.is_running is False
+    assert client.return_code is not None
+
+
 def test_request_timeout_then_forced_shutdown_reaps_process() -> None:
     client = _client("timeout", request_timeout=0.05, shutdown_timeout=0.05)
     client.start()
@@ -366,6 +473,71 @@ def test_request_timeout_then_forced_shutdown_reaps_process() -> None:
     assert shutdown.forced is True
     assert client.is_running is False
     assert client.return_code is not None
+
+
+def test_shutdown_surfaces_kill_failure_without_unbounded_wait() -> None:
+    class FakeStdin:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class KillFailureProcess:
+        stdin = FakeStdin()
+        returncode: int | None = None
+
+        def wait(self, timeout: float) -> None:
+            raise subprocess.TimeoutExpired(cmd="fixture", timeout=timeout)
+
+        def kill(self) -> None:
+            raise OSError("synthetic kill failure")
+
+        def poll(self) -> None:
+            return None
+
+    client = AppServerClient(command=("fixture",), shutdown_timeout=0.01)
+    client._process = KillFailureProcess()  # type: ignore[assignment]
+    client._state = AppServerState.RUNNING
+    started = time.monotonic()
+
+    with pytest.raises(AppServerShutdownError, match="failed to kill"):
+        client.close()
+
+    assert time.monotonic() - started < 0.5
+
+
+def test_shutdown_surfaces_post_kill_timeout_without_unbounded_wait() -> None:
+    class FakeStdin:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class PostKillTimeoutProcess:
+        stdin = FakeStdin()
+        returncode: int | None = None
+        killed = False
+
+        def wait(self, timeout: float) -> None:
+            raise subprocess.TimeoutExpired(cmd="fixture", timeout=timeout)
+
+        def kill(self) -> None:
+            self.killed = True
+
+        def poll(self) -> None:
+            return None
+
+    process = PostKillTimeoutProcess()
+    client = AppServerClient(command=("fixture",), shutdown_timeout=0.01)
+    client._process = process  # type: ignore[assignment]
+    client._state = AppServerState.RUNNING
+    started = time.monotonic()
+
+    with pytest.raises(AppServerShutdownError, match="did not exit after kill"):
+        client.close()
+
+    assert process.killed is True
+    assert time.monotonic() - started < 0.5
 
 
 def test_shutdown_kills_a_process_that_ignores_stdin_eof() -> None:

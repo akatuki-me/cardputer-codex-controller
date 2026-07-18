@@ -34,6 +34,16 @@ def main() -> int:
     if mode == "timeout":
         time.sleep(60)
         return 0
+    if mode == "oversized-stdout":
+        sys.stdout.write("x" * 4096)
+        sys.stdout.flush()
+        time.sleep(60)
+        return 0
+    if mode == "oversized-stderr":
+        sys.stderr.write("x" * 4096)
+        sys.stderr.flush()
+        time.sleep(60)
+        return 0
     if mode == "invalid-json":
         sys.stdout.write("not-json\n")
         sys.stdout.flush()
@@ -52,13 +62,27 @@ def main() -> int:
         return 11
     if mode == "environment" and any(
         os.environ.get(name)
-        for name in ("CODEX_ACCESS_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "OPENAI_API_KEY")
+        for name in (
+            "CODEX_ACCESS_TOKEN",
+            "DATABASE_URL",
+            "DOCKER_AUTH_CONFIG",
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
+            "OPENAI_API_KEY",
+            "SESSION_COOKIE",
+        )
     ):
         return 14
+    if mode == "environment" and not os.environ.get("PATH"):
+        return 16
     if mode == "sensitive-environment" and os.environ.get("CODEX_ACCESS_TOKEN") != (
         "fixture-token"
     ):
         return 15
+    if mode == "explicit-environment" and os.environ.get("DATABASE_URL") != (
+        "fixture-database-url"
+    ):
+        return 17
 
     if mode == "stderr":
         sys.stderr.write("warning: synthetic warning\n")
@@ -85,6 +109,15 @@ def main() -> int:
         return 13
 
     if mode == "ignore-eof":
+        time.sleep(60)
+        return 0
+    if mode == "eof-after-initialized":
+        time.sleep(0.1)
+        return 0
+    if mode == "invalid-after-initialized":
+        time.sleep(0.1)
+        sys.stdout.write("not-json\n")
+        sys.stdout.flush()
         time.sleep(60)
         return 0
 

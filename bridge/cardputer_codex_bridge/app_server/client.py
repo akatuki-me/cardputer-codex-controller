@@ -16,6 +16,7 @@ from .errors import (
     AppServerError,
     AppServerProtocolError,
     AppServerResponseError,
+    AppServerShutdownError,
     AppServerStartError,
     AppServerStateError,
     AppServerTimeoutError,
@@ -34,6 +35,29 @@ from .types import (
 )
 
 _CODEX_VERSION_PATTERN = re.compile(r"/(?P<version>\d+\.\d+\.\d+)(?:[ )]|$)")
+_INHERITED_ENV_NAMES = {
+    "APPDATA",
+    "CODEX_HOME",
+    "COMSPEC",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LOCALAPPDATA",
+    "PATH",
+    "PATHEXT",
+    "SSL_CERT_DIR",
+    "SSL_CERT_FILE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "WINDIR",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_RUNTIME_DIR",
+}
 _SENSITIVE_ENV_SUFFIXES = ("_API_KEY", "_PASSWORD", "_SECRET", "_TOKEN")
 _SENSITIVE_ENV_NAMES = {
     "AWS_ACCESS_KEY_ID",
@@ -45,6 +69,8 @@ _SENSITIVE_ENV_NAMES = {
     "GITHUB_TOKEN",
     "OPENAI_API_KEY",
 }
+_MAX_STDOUT_LINE_CHARS = 16 * 1024 * 1024
+_MAX_STDERR_LINE_CHARS = 64 * 1024
 
 
 def codex_app_server_command(executable: str | None = None) -> tuple[str, ...]:
@@ -75,7 +101,7 @@ def _build_child_environment(
     child_environment = {
         name: value
         for name, value in os.environ.items()
-        if not _is_sensitive_environment_name(name)
+        if name.upper() in _INHERITED_ENV_NAMES
     }
     if overrides is None:
         return child_environment
@@ -119,14 +145,17 @@ class AppServerClient:
         self._write_lock = threading.Lock()
         self._pending_lock = threading.Lock()
         self._stderr_lock = threading.Lock()
+        self._process_shutdown_lock = threading.Lock()
 
         self._process: subprocess.Popen[str] | None = None
         self._stdout_thread: threading.Thread | None = None
         self._stderr_thread: threading.Thread | None = None
         self._next_request_id = 1
         self._pending: dict[RequestId, queue.Queue[JsonObject | AppServerError]] = {}
-        self._inbound: queue.Queue[JsonObject] = queue.Queue()
+        self._inbound: queue.Queue[JsonObject | AppServerError] = queue.Queue()
         self._fatal_error: AppServerError | None = None
+        self._shutdown_failure: AppServerShutdownError | None = None
+        self._process_shutdown_result: ShutdownResult | None = None
         self._shutdown_result: ShutdownResult | None = None
 
         self._stderr_total_lines = 0
@@ -270,11 +299,24 @@ class AppServerClient:
         self._write_message(message)
 
     def next_message(self, *, timeout: float | None = None) -> JsonObject:
+        with self._state_lock:
+            self._raise_fatal_locked()
+            if self._state is AppServerState.NEW:
+                raise AppServerStateError("cannot receive messages before app-server start")
+            if self._state in (AppServerState.CLOSING, AppServerState.CLOSED):
+                raise AppServerClosedError("app-server client is closed")
         wait_timeout = self._request_timeout if timeout is None else timeout
         try:
-            return self._inbound.get(timeout=wait_timeout)
+            message = self._inbound.get(timeout=wait_timeout)
         except queue.Empty as exc:
+            with self._state_lock:
+                self._raise_fatal_locked()
+                if self._state in (AppServerState.CLOSING, AppServerState.CLOSED):
+                    raise AppServerClosedError("app-server client is closed") from exc
             raise AppServerTimeoutError("timed out waiting for an app-server message") from exc
+        if isinstance(message, AppServerError):
+            raise message
+        return message
 
     def close(self) -> ShutdownResult:
         with self._lifecycle_lock:
@@ -290,23 +332,10 @@ class AppServerClient:
                 return self._shutdown_result
             self._state = AppServerState.CLOSING
 
-        self._fail_pending(AppServerClosedError("app-server client is closing"))
-        process = self._process
-        if process is None:
-            result = ShutdownResult(exit_code=None, forced=False)
-        else:
-            if process.stdin is not None and not process.stdin.closed:
-                with suppress(OSError):
-                    process.stdin.close()
-            forced = False
-            try:
-                process.wait(timeout=self._shutdown_timeout)
-            except subprocess.TimeoutExpired:
-                forced = True
-                with suppress(OSError):
-                    process.kill()
-                process.wait()
-            result = ShutdownResult(exit_code=process.returncode, forced=forced)
+        close_error = AppServerClosedError("app-server client is closing")
+        self._fail_pending(close_error)
+        self._inbound.put(close_error)
+        result = self._shutdown_process()
 
         self._join_reader_threads()
         with self._state_lock:
@@ -387,7 +416,15 @@ class AppServerClient:
 
     def _read_stdout(self, stream: TextIO) -> None:
         while True:
-            line = stream.readline()
+            try:
+                line = _read_bounded_line(
+                    stream,
+                    limit=_MAX_STDOUT_LINE_CHARS,
+                    stream_name="stdout",
+                )
+            except AppServerProtocolError as error:
+                self._set_fatal(error)
+                return
             if line == "":
                 with self._state_lock:
                     closing = self._state in (AppServerState.CLOSING, AppServerState.CLOSED)
@@ -404,7 +441,18 @@ class AppServerClient:
                 return
 
     def _read_stderr(self, stream: TextIO) -> None:
-        for line in stream:
+        while True:
+            try:
+                line = _read_bounded_line(
+                    stream,
+                    limit=_MAX_STDERR_LINE_CHARS,
+                    stream_name="stderr",
+                )
+            except AppServerProtocolError as error:
+                self._set_fatal(error)
+                return
+            if line == "":
+                return
             normalized = line.strip().casefold()
             with self._stderr_lock:
                 self._stderr_total_lines += 1
@@ -477,6 +525,8 @@ class AppServerClient:
                 )
 
     def _raise_fatal_locked(self) -> None:
+        if self._shutdown_failure is not None:
+            raise self._shutdown_failure
         if self._fatal_error is not None:
             raise self._fatal_error
 
@@ -484,10 +534,17 @@ class AppServerClient:
         with self._state_lock:
             if self._state in (AppServerState.CLOSING, AppServerState.CLOSED):
                 return
-            if self._fatal_error is None:
-                self._fatal_error = error
+            if self._fatal_error is not None:
+                return
+            self._fatal_error = error
             self._state = AppServerState.FAILED
         self._fail_pending(error)
+        self._inbound.put(error)
+        try:
+            self._shutdown_process()
+        except AppServerShutdownError as shutdown_error:
+            with self._state_lock:
+                self._shutdown_failure = shutdown_error
 
     def _fail_pending(self, error: AppServerError) -> None:
         with self._pending_lock:
@@ -496,7 +553,59 @@ class AppServerClient:
         for response_queue in pending:
             response_queue.put(error)
 
+    def _shutdown_process(self) -> ShutdownResult:
+        with self._process_shutdown_lock:
+            if self._process_shutdown_result is not None:
+                return self._process_shutdown_result
+            process = self._process
+            if process is None:
+                result = ShutdownResult(exit_code=None, forced=False)
+            else:
+                if process.stdin is not None and not process.stdin.closed:
+                    with suppress(OSError):
+                        process.stdin.close()
+                forced = False
+                try:
+                    process.wait(timeout=self._shutdown_timeout)
+                except subprocess.TimeoutExpired:
+                    forced = True
+                    try:
+                        process.kill()
+                    except OSError as exc:
+                        if process.poll() is None:
+                            raise AppServerShutdownError(
+                                "failed to kill app-server after shutdown timeout"
+                            ) from exc
+                    try:
+                        process.wait(timeout=self._shutdown_timeout)
+                    except subprocess.TimeoutExpired as exc:
+                        raise AppServerShutdownError(
+                            "app-server did not exit after kill"
+                        ) from exc
+                    except OSError as exc:
+                        raise AppServerShutdownError(
+                            "failed while waiting for app-server exit after kill"
+                        ) from exc
+                except OSError as exc:
+                    raise AppServerShutdownError(
+                        "failed while waiting for app-server exit"
+                    ) from exc
+                result = ShutdownResult(exit_code=process.returncode, forced=forced)
+            self._process_shutdown_result = result
+            with self._state_lock:
+                self._shutdown_failure = None
+            return result
+
     def _join_reader_threads(self) -> None:
         for thread in (self._stdout_thread, self._stderr_thread):
             if thread is not None:
                 thread.join(timeout=1.0)
+
+
+def _read_bounded_line(stream: TextIO, *, limit: int, stream_name: str) -> str:
+    line = stream.readline(limit + 1)
+    if len(line) > limit:
+        raise AppServerProtocolError(
+            f"app-server {stream_name} line exceeds {limit} character limit"
+        )
+    return line

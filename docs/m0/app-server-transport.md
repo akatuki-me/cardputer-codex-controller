@@ -33,10 +33,18 @@ python -m pytest bridge/tests/app_server/test_live_app_server.py -q
 `codexHome`は型の検証後に破棄し、test結果や通常の戻り値へ含めない。認証情報、prompt、
 thread本文、ローカルpath、生のstderrは記録していない。
 
-子processへはPATHなどの非credential環境だけを継承する。名前が`_TOKEN`、`_API_KEY`、
-`_SECRET`、`_PASSWORD`で終わる環境変数と既知のcredential名は既定で除外する。
-`CODEX_ACCESS_TOKEN`などが必要な運用では、呼出側が値を個別指定し、
-`allow_sensitive_env=True`へ明示的にopt-inする。値を通常logやexceptionへ含めない。
+子processへは`PATH`、OSのhome/config/temp、locale、TLS certificate pathなど、起動に必要な
+allowlist内の環境変数だけを継承する。allowlist外の値は、既知の名前やsuffixに一致しない
+credentialも含めて暗黙には継承しない。必要な値は呼出側が`env`へ個別指定する。
+`CODEX_ACCESS_TOKEN`など、名前が`_TOKEN`、`_API_KEY`、`_SECRET`、`_PASSWORD`で終わる値と
+既知のcredential名を指定する場合は、さらに`allow_sensitive_env=True`へ明示的にopt-inする。
+値を通常logやexceptionへ含めない。
+
+newlineまでの無制限bufferingを避けるため、stdoutのJSONL frameは1行16 Mi文字、stderrは
+1行64 Ki文字を上限とする。超過はfatal protocol errorとして待機中のconsumerへ通知し、
+子processを正常終了またはtimeout後のkillでreapする。kill失敗またはkill後の再timeoutは
+`AppServerShutdownError`として明示し、無期限には待機しない。EOF、fatal error、明示closeも
+`next_message()`の待機を直ちに解除し、timeoutへ誤変換しない。
 
 Windowsでは対話wrapperを誤起動しないよう、PATHから`codex.exe`だけを解決する。
 見つからない場合は`codex.cmd`へfallbackせず起動前に失敗する。
@@ -58,6 +66,9 @@ CIでは合成app-server processを使い、次を認証済みCodexから独立�
 - 同時start、start中close、initialize中closeの直列化とreap
 - stderr本文を保持せず、件数とseverityだけに縮約すること
 - credential環境の既定除外と明示opt-in
+- stdout/stderrの1行上限超過時のfatal化とprocess reap
+- kill失敗とkill後timeoutの有界なshutdown error
+- EOF、fatal error、closeによるmessage待機の即時解除
 - Windowsで対話wrapperへfallbackしないcommand解決
 - Codex version不一致時に`initialized`を送らないこと
 

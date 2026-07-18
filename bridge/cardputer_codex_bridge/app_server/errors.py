@@ -11,6 +11,10 @@ class AppServerStartError(AppServerError):
     """The app-server process could not be started."""
 
 
+class AppServerShutdownError(AppServerError):
+    """The app-server process could not be stopped within the shutdown contract."""
+
+
 class AppServerStateError(AppServerError):
     """An operation was attempted in an invalid lifecycle state."""
 
