@@ -137,6 +137,58 @@ def test_stale_completion_does_not_clear_a_newer_active_turn() -> None:
     assert operations.active_turn(thread_id) == active_turn
 
 
+def test_late_started_does_not_reactivate_a_completed_turn() -> None:
+    operations = AppServerOperations(_client("normal"))
+    thread_id = ThreadId("thread-synthetic-1")
+    turn_id = TurnId("turn-synthetic-1")
+
+    completed = operations.handle_notification(
+        {
+            "method": "turn/completed",
+            "params": {
+                "threadId": thread_id,
+                "turn": {"id": turn_id, "items": [], "status": "completed"},
+            },
+        }
+    )
+    late_started = operations.handle_notification(
+        {
+            "method": "turn/started",
+            "params": {
+                "threadId": thread_id,
+                "turn": {"id": turn_id, "items": [], "status": "inProgress"},
+            },
+        }
+    )
+
+    assert completed is not None
+    assert late_started is None
+    assert operations.active_turn(thread_id) is None
+
+
+def test_started_for_a_stale_turn_is_not_published_as_active() -> None:
+    operations = AppServerOperations(_client("normal"))
+    thread_id = ThreadId("thread-synthetic-1")
+    operations._active_turns[thread_id] = TurnId("turn-synthetic-2")
+
+    event = operations.handle_notification(
+        {
+            "method": "turn/started",
+            "params": {
+                "threadId": thread_id,
+                "turn": {
+                    "id": "turn-synthetic-1",
+                    "items": [],
+                    "status": "inProgress",
+                },
+            },
+        }
+    )
+
+    assert event is None
+    assert operations.active_turn(thread_id) == TurnId("turn-synthetic-2")
+
+
 def test_stale_started_notification_does_not_replace_a_newer_active_turn() -> None:
     operations = AppServerOperations(_client("normal"))
     thread_id = ThreadId("thread-synthetic-1")

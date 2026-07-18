@@ -21,6 +21,17 @@ transportのJSON-RPC request IDは`AppServerClient`だけが採番・照合し�
 消さない。start responseよりcompletionが先に処理される場合も、完了済みturnをactiveへ
 戻さない。
 
+通知は1つのdispatcherだけが`AppServerClient.next_message()`から取り出し、順番に
+`AppServerOperations.handle_notification()`へ渡す。複数consumerが通知を直接取り合う
+構成にはしない。完了済みturnはbounded tombstoneで保持し、遅延した`turn/started`で
+activeへ戻さない。`steer_turn`と`interrupt_turn`はactive確認からRPC応答まで状態lockを
+保持するため、通知dispatcherとは別threadから呼び出し、request timeoutを必ず設定する。
+
+最小のconsumerは、initialize後に`AppServerOperations`を生成し、`thread/start`と
+`turn/start`を呼ぶ。以後の通知は上記dispatcherで処理し、`TurnCompletedEvent`を受けたら
+そのturnを完了として扱う。実行例は`bridge/tests/app_server/test_operations.py`、実CLIとの
+一連の接続例は`bridge/tests/app_server/test_live_operations.py`を正とする。
+
 ## model/list
 
 `model/list`は空pageを正常値として扱い、未知のmodel名とreasoning effortを文字列のまま

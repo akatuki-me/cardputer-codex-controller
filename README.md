@@ -70,9 +70,10 @@ cardputer-codex-controller codex-demo
 
 ## 状態
 
-- 公開開発基盤: 準備中
-- M0 Host app-server transport: 実装済み
+- 公開開発基盤: 実装済み
+- M0 Host app-server transport・thread/turn操作: 実装済み
 - Host controller合成デモ: 実装済み（実Codex eventとのreducer統合は未実装）
+- M0 approval・multi-client・ADR: 継続中
 - 実機書き込み: 未承認・未実施
 
 ## 免責
