@@ -16,6 +16,7 @@ from .types import (
     InitializeResult,
     JsonObject,
     JsonValue,
+    RequestId,
     ShutdownResult,
     StderrSummary,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "InitializeResult",
     "JsonObject",
     "JsonValue",
+    "RequestId",
     "ShutdownResult",
     "StderrSummary",
     "codex_app_server_command",
