@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -23,6 +24,8 @@ from .types import JsonObject, JsonValue
 
 type ApprovalPolicy = Literal["untrusted", "on-request", "never"]
 type SandboxMode = Literal["read-only", "workspace-write", "danger-full-access"]
+
+_COMPLETED_TOMBSTONE_LIMIT = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +60,8 @@ class AppServerOperations:
         self._client = client
         self._active_turns: dict[ThreadId, TurnId] = {}
         self._starting_threads: set[ThreadId] = set()
-        self._early_completions: set[tuple[ThreadId, TurnId]] = set()
+        self._completed_turns: set[tuple[ThreadId, TurnId]] = set()
+        self._completed_turn_order: deque[tuple[ThreadId, TurnId]] = deque()
         self._turn_lock = threading.RLock()
 
     def start_thread(
@@ -107,14 +111,10 @@ class AppServerOperations:
         except Exception:
             with self._turn_lock:
                 self._starting_threads.discard(thread_id)
-                self._early_completions = {
-                    key for key in self._early_completions if key[0] != thread_id
-                }
             raise
         with self._turn_lock:
             self._starting_threads.discard(thread_id)
-            completed_early = (thread_id, turn.turn_id) in self._early_completions
-            self._early_completions.discard((thread_id, turn.turn_id))
+            completed_early = (thread_id, turn.turn_id) in self._completed_turns
             if turn.status is TurnStatus.IN_PROGRESS and not completed_early:
                 self._active_turns[thread_id] = turn.turn_id
             else:
@@ -211,17 +211,16 @@ class AppServerOperations:
             if turn.status is not TurnStatus.IN_PROGRESS:
                 raise AppServerProtocolError("turn/started does not contain an active turn")
             with self._turn_lock:
+                key = (thread_id, turn.turn_id)
                 current = self._active_turns.get(thread_id)
                 can_activate = (
                     thread_id in self._starting_threads
                     or current is None
                     or current == turn.turn_id
                 )
-                if (
-                    can_activate
-                    and (thread_id, turn.turn_id) not in self._early_completions
-                ):
-                    self._active_turns[thread_id] = turn.turn_id
+                if not can_activate or key in self._completed_turns:
+                    return None
+                self._active_turns[thread_id] = turn.turn_id
             return TurnStartedEvent(
                 thread_id=thread_id,
                 turn_id=turn.turn_id,
@@ -238,11 +237,10 @@ class AppServerOperations:
             raise AppServerProtocolError("turn/completed contains an active turn")
         turn_value = _require_object(params.get("turn"), "turn/completed turn")
         with self._turn_lock:
+            self._remember_completed((thread_id, turn.turn_id))
             matched = self._active_turns.get(thread_id) == turn.turn_id
             if matched:
                 self._active_turns.pop(thread_id, None)
-            elif thread_id in self._starting_threads:
-                self._early_completions.add((thread_id, turn.turn_id))
         return TurnCompletedEvent(
             thread_id=thread_id,
             turn_id=turn.turn_id,
@@ -254,6 +252,15 @@ class AppServerOperations:
     def _require_active_turn(self, thread_id: ThreadId, turn_id: TurnId) -> None:
         if self._active_turns.get(thread_id) != turn_id:
             raise ActiveTurnRequiredError(thread_id=thread_id, turn_id=turn_id)
+
+    def _remember_completed(self, key: tuple[ThreadId, TurnId]) -> None:
+        if key in self._completed_turns:
+            return
+        if len(self._completed_turn_order) >= _COMPLETED_TOMBSTONE_LIMIT:
+            oldest = self._completed_turn_order.popleft()
+            self._completed_turns.remove(oldest)
+        self._completed_turn_order.append(key)
+        self._completed_turns.add(key)
 
 
 @dataclass(frozen=True, slots=True)

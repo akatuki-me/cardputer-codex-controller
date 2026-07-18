@@ -51,8 +51,9 @@ python -m build
 
 ## 状態
 
-- 公開開発基盤: 準備中
-- M0 Host app-server proof: 未着手
+- 公開開発基盤: 実装済み
+- M0 Host app-server transport・thread/turn操作: 実装済み
+- M0 approval・multi-client・ADR: 継続中
 - 実機書き込み: 未承認・未実施
 
 ## 免責
