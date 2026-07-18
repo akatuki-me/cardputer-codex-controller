@@ -6,6 +6,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from cardputer_codex_bridge.controller.demo import run_demo
+from cardputer_codex_bridge.controller.e2e import (
+    run_e2e_dry_run,
+    run_serial_e2e,
+)
 from cardputer_codex_bridge.controller.live_demo import run_codex_demo
 from cardputer_codex_bridge.device_link import (
     PySerialProvider,
@@ -38,6 +42,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--dry-run",
         action="store_true",
         help="選択だけを検証しserial I/Oを起動しない",
+    )
+    e2e = subcommands.add_parser(
+        "e2e",
+        help="実Codexと合成または明示選択したserial transportのE2Eを実行",
+    )
+    source = e2e.add_mutually_exclusive_group(required=True)
+    source.add_argument("--synthetic", action="store_true", help="実portを使わない合成CDC")
+    source.add_argument("--port", help="この実行だけに使う明示port")
+    source.add_argument(
+        "--port-handle",
+        type=Path,
+        help="Git管理外の1行local handle file",
+    )
+    e2e.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="選択だけを検証しserial I/OとCodexを起動しない",
     )
     args = parser.parse_args(argv)
     if args.command == "demo":
@@ -79,6 +100,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except Exception as error:
             print(f"bringup FAIL {type(error).__name__}", file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "e2e":
+        try:
+            if args.synthetic:
+                selected_port = "synthetic"
+                synthetic_provider = SyntheticSerialProvider()
+                provider: SerialProvider = synthetic_provider
+                synthetic_device: SyntheticSerialProvider | None = synthetic_provider
+            else:
+                selected_port = resolve_port(
+                    explicit_port=args.port,
+                    handle_file=args.port_handle,
+                )
+                provider = PySerialProvider()
+                synthetic_device = None
+            if args.dry_run:
+                run_e2e_dry_run(sys.stdout)
+                return 0
+            run_serial_e2e(
+                sys.stdout,
+                port=selected_port,
+                provider=provider,
+                synthetic_device=synthetic_device,
+            )
+        except Exception as error:
+            print(f"e2e FAIL {type(error).__name__}", file=sys.stderr)
             return 1
         return 0
     parser.error("unknown command")
