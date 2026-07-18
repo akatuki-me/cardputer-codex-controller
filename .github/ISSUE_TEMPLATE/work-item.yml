@@ -1,0 +1,58 @@
+name: Work item
+description: 検証可能な実装・調査単位を提案します。
+title: "[Work]: "
+labels: []
+body:
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景・動機
+      description: B/Mを、既存sessionを知らない読み手にも分かる形で記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 目的
+      description: 完了後に成立する状態を記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope / NonGoals
+      description: 実施範囲と実施しないことを分けてください。
+    validations:
+      required: true
+  - type: textarea
+    id: inventory
+    attributes:
+      label: Touch inventory
+      description: 変更を許可するfileまたはdirectoryを列挙してください。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 受入基準
+      description: command、期待結果、consumer側証拠を含めてください。
+    validations:
+      required: true
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Hardware操作
+      options:
+        - なし
+        - buildのみ
+        - port openが必要
+        - flash read/writeが必要
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 公開可能な証拠
+      description: 生ログや端末IDを含めず、fixtureと要約で記載してください。
+    validations:
+      required: true

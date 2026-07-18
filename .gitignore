@@ -1,0 +1,72 @@
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+auth.json
+credentials*.json
+secrets.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Device-specific and private artifacts
+backups/
+factory-backup/
+captures/
+recordings/
+transcripts/
+logs/
+local-private/
+runtime/
+state.json
+*.bin
+*.elf
+*.hex
+*.uf2
+*.img
+*.nvs
+*.dump
+*.pcap
+*.pcapng
+*.log
+
+# Local configuration
+config.local.toml
+*.local.toml
+.codex/
+.claude/
+.agents/
+
+# Internal context storage
+docs/inbox/
+docs/doc_lake/
+docs/doc_wh/
+docs/doc_mart/
+docs/pipeline_index.yaml
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# PlatformIO / ESP-IDF
+.pio/
+firmware/.pio/
+firmware/sdkconfig
+firmware/sdkconfig.old
+compile_commands.json
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
