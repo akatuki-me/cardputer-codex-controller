@@ -120,6 +120,14 @@ def main() -> int:
         sys.stdout.flush()
         time.sleep(60)
         return 0
+    if mode == "delayed-request-response":
+        delayed_request = _read_message()
+        if delayed_request is None:
+            return 18
+        time.sleep(0.2)
+        _write({"id": delayed_request.get("id"), "result": {"ok": True}})
+        sys.stdin.read()
+        return 0
 
     sys.stdin.read()
     return 0

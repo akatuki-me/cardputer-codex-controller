@@ -315,6 +315,7 @@ class AppServerClient:
                     raise AppServerClosedError("app-server client is closed") from exc
             raise AppServerTimeoutError("timed out waiting for an app-server message") from exc
         if isinstance(message, AppServerError):
+            self._inbound.put(message)
             raise message
         return message
 
@@ -381,9 +382,11 @@ class AppServerClient:
         except queue.Empty as exc:
             with self._pending_lock:
                 self._pending.pop(request_id, None)
-            raise AppServerTimeoutError(
+            timeout_error = AppServerTimeoutError(
                 f"app-server request {request_id!r} timed out"
-            ) from exc
+            )
+            self._set_fatal(timeout_error)
+            raise timeout_error from exc
         if isinstance(response, AppServerError):
             raise response
         if "error" in response:
@@ -600,6 +603,12 @@ class AppServerClient:
         for thread in (self._stdout_thread, self._stderr_thread):
             if thread is not None:
                 thread.join(timeout=1.0)
+        process = self._process
+        if process is not None:
+            for stream in (process.stdout, process.stderr):
+                if stream is not None and not stream.closed:
+                    with suppress(OSError):
+                        stream.close()
 
 
 def _read_bounded_line(stream: TextIO, *, limit: int, stream_name: str) -> str:

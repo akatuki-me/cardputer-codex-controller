@@ -63,6 +63,23 @@ def test_initialize_sends_initialized_then_shutdowns_normally() -> None:
     assert client.return_code == 0
 
 
+def test_close_closes_child_stdio_streams() -> None:
+    client = _client("normal")
+    client.start()
+    client.initialize(CLIENT_INFO)
+    process = client._process
+    assert process is not None
+    assert process.stdin is not None
+    assert process.stdout is not None
+    assert process.stderr is not None
+
+    client.close()
+
+    assert process.stdin.closed
+    assert process.stdout.closed
+    assert process.stderr.closed
+
+
 def test_concurrent_start_calls_spawn_only_one_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -435,6 +452,44 @@ def test_close_wakes_a_blocked_next_message_consumer() -> None:
     assert isinstance(errors[0], AppServerClosedError)
 
 
+def test_close_wakes_all_blocked_next_message_consumers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client("normal", request_timeout=0.5)
+    entered_get = threading.Barrier(3)
+    errors: list[Exception] = []
+    client.start()
+    client.initialize(CLIENT_INFO)
+    original_get = client._inbound.get
+
+    def gated_get(block: bool = True, timeout: float | None = None) -> object:
+        entered_get.wait(timeout=1.0)
+        return original_get(block=block, timeout=timeout)
+
+    monkeypatch.setattr(client._inbound, "get", gated_get)
+
+    def wait_for_message() -> None:
+        try:
+            client.next_message(timeout=0.5)
+        except Exception as error:
+            errors.append(error)
+
+    consumers = [threading.Thread(target=wait_for_message) for _ in range(2)]
+    for consumer in consumers:
+        consumer.start()
+    entered_get.wait(timeout=1.0)
+
+    started = time.monotonic()
+    client.close()
+    for consumer in consumers:
+        consumer.join(timeout=1.0)
+
+    assert all(not consumer.is_alive() for consumer in consumers)
+    assert time.monotonic() - started < 0.25
+    assert len(errors) == 2
+    assert all(isinstance(error, AppServerClosedError) for error in errors)
+
+
 @pytest.mark.parametrize(
     ("mode", "constant_name", "stream_name"),
     [
@@ -473,6 +528,25 @@ def test_request_timeout_then_forced_shutdown_reaps_process() -> None:
     assert shutdown.forced is True
     assert client.is_running is False
     assert client.return_code is not None
+
+
+def test_ready_request_timeout_is_terminal_and_reaps_delayed_response_process() -> None:
+    client = _client(
+        "delayed-request-response",
+        request_timeout=1.0,
+        shutdown_timeout=0.5,
+    )
+    client.start()
+    try:
+        client.initialize(CLIENT_INFO)
+
+        with pytest.raises(AppServerTimeoutError):
+            client.request("model/list", timeout=0.05)
+
+        assert client.state is AppServerState.FAILED
+        assert client.is_running is False
+    finally:
+        client.close()
 
 
 def test_shutdown_surfaces_kill_failure_without_unbounded_wait() -> None:
