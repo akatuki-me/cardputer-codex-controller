@@ -4,12 +4,13 @@
 
 初期実装はschemaを照合済みのCodex CLI 0.144.5および0.144.6だけを受け入れます。別versionへ更新するときはschemaを別directoryへ生成し、差分reviewとcontract testを行います。
 
-0.144.6では本bridgeが使用するcommand/file approval responseの互換性をschemaで確認しました。一方、実app-serverのcommand approval requestでは`availableDecisions`、`commandActions`、`environmentId`、amendment関連fieldが提示される場合があります。Bridgeは未知fieldを保持し、response schemaだけからdevice表示可否を推測しません。それ以外のversionは引き続きinitialize時に拒否します。
+0.144.6では本bridgeが使用するcommand/file approval responseに加え、`ToolRequestUserInputParams`と`ToolRequestUserInputResponse`をschemaで確認しました。一方、実app-serverのcommand approval requestでは`availableDecisions`、`commandActions`、`environmentId`、amendment関連fieldが提示される場合があります。Bridgeは未知fieldを保持し、response schemaだけからdevice表示可否を推測しません。それ以外のversionは引き続きinitialize時に拒否します。
 
 ## Connection
 
 - transportはstdio JSONL
 - connectionごとに`initialize`を1回送信し、成功後に`initialized`を送る
+- app-server clientの既定は`experimentalApi=false`とし、host controllerだけが`requestUserInput`受信のため明示的に`true`へopt-inする
 - request/response IDを完全一致で管理する
 - server requestは未解決のまま保持し、既定値で自動回答しない
 
@@ -25,6 +26,8 @@
 - file change approval
 - `serverRequest/resolved`
 - `turn/completed`
+
+M4のhost回答面は、上記に加えてexperimentalな`item/tool/requestUserInput`を使用します。
 
 ## Approval decisions in 0.144.5
 
@@ -75,6 +78,26 @@ protocol/state errorとして拒否します。0.144.5のobject decisionはpaylo
 [`m0/approval-contract.md`](m0/approval-contract.md)を参照してください。
 
 Host consoleもserver提示集合との積集合だけを操作として公開します。追加のsemantic contextを表示できないrequestでは`accept`を無効化し、提示されている`decline`または`cancel`だけを同名で送ります。Device表示上の切り詰めだけで、hostが原文全体を保持している場合はhostの`accept`を維持できます。
+
+## Host user-input lifecycle
+
+`item/tool/requestUserInput`はapproval decisionではありません。Host controllerは短縮IDを割り当て、単一・非secret質問への`answer <id> <text>`を次のresponseへ変換します。
+
+```json
+{
+  "answers": {
+    "<schema question.id>": {
+      "answers": ["<text>"]
+    }
+  }
+}
+```
+
+生のRPC IDと`question.id`は内部相関だけに使い、console、log、deviceへ出しません。Response送信後も`response_sent`としてpendingを維持し、同じ`requestId`と`threadId`の`serverRequest/resolved`でだけ除去します。Serverの`autoResolutionMs`による先行解決も同じnotificationで除去し、後着回答を拒否します。
+
+複数質問とsecret質問は自動回答せずhost pendingへ残します。複数回答の蓄積UIとno-echo入力面は後続M4の契約とし、現版で単一回答を複数質問へ複製したり、secretを通常REPLへ流したりしません。詳細は[`m4/host-user-input.md`](m4/host-user-input.md)を参照してください。
+
+`experimentalApi=true`はexperimental surface全体へのopt-inであるため、controllerが対応していないserver requestを黙って放置しません。未知のtop-level request IDへpayloadを含まない固定のJSON-RPC `-32601` errorを即時応答し、そのrequestだけをfail closedします。Rejected IDはmatching `serverRequest/resolved`まで内部保持してapproval/user-inputへ誤配送せず、event pumpは継続します。これにより未応答requestのためmain threadとturnが入力待ちのまま固まる状態を避けます。
 
 ## Shutdown
 

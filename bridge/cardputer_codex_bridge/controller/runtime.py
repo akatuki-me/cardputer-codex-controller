@@ -11,9 +11,11 @@ from cardputer_codex_bridge.app_server import (
     AppServerClient,
     AppServerClosedError,
     AppServerOperations,
+    AppServerProtocolError,
     AppServerTimeoutError,
     ClientInfo,
     JsonObject,
+    RequestId,
     ThreadStartOptions,
     codex_app_server_command,
 )
@@ -26,6 +28,14 @@ from cardputer_codex_bridge.approval import (
 )
 from cardputer_codex_bridge.device_link import SerialProvider, SyntheticSerialProvider
 from cardputer_codex_bridge.models import ThreadId, TurnCompletedEvent, TurnId, TurnStartedEvent
+from cardputer_codex_bridge.user_input import (
+    SERVER_REQUEST_RESOLVED_METHOD,
+    USER_INPUT_REQUEST_METHOD,
+    HostUserInputConsole,
+    HostUserInputCoordinator,
+    UserInputRequest,
+    UserInputResolved,
+)
 
 from .device_session import DeviceControllerSession
 from .state import ControllerState
@@ -55,6 +65,8 @@ class _EventPump:
         operations: AppServerOperations,
         coordinator: ApprovalCoordinator,
         console: HostApprovalConsole,
+        user_input_coordinator: HostUserInputCoordinator,
+        user_input_console: HostUserInputConsole,
         state: ControllerState,
         session: DeviceControllerSession,
         thread_id: ThreadId,
@@ -64,10 +76,13 @@ class _EventPump:
         self._operations = operations
         self._coordinator = coordinator
         self._console = console
+        self._user_input_coordinator = user_input_coordinator
+        self._user_input_console = user_input_console
         self._state = state
         self._session = session
         self._thread_id = thread_id
         self._emit = emit
+        self._rejected_request_ids: set[RequestId] = set()
         self._stop = threading.Event()
         self._errors: queue.Queue[BaseException] = queue.Queue(maxsize=1)
         self._thread = threading.Thread(
@@ -109,20 +124,53 @@ class _EventPump:
             self._record_error(error)
 
     def _handle(self, message: JsonObject) -> None:
+        method = message.get("method")
+        user_input_event = None
+        if method == USER_INPUT_REQUEST_METHOD:
+            user_input_event = self._user_input_coordinator.handle_message(message)
+        elif method == SERVER_REQUEST_RESOLVED_METHOD:
+            params = message.get("params")
+            request_id = params.get("requestId") if isinstance(params, dict) else None
+            if (
+                isinstance(request_id, (int, str))
+                and not isinstance(request_id, bool)
+                and request_id in self._rejected_request_ids
+            ):
+                self._rejected_request_ids.remove(request_id)
+                self._emit("unsupported_server_request RESOLVED\n")
+                return
+            if self._user_input_coordinator.owns(request_id):
+                user_input_event = self._user_input_coordinator.handle_message(message)
+        if isinstance(user_input_event, UserInputRequest):
+            if user_input_event.thread_id == self._thread_id:
+                self._sync_attention()
+            self._emit(self._user_input_console.render())
+            return
+        if isinstance(user_input_event, UserInputResolved):
+            if user_input_event.request.thread_id == self._thread_id:
+                self._sync_attention()
+            self._emit(self._user_input_console.render())
+            return
+
         approval_event = self._coordinator.handle_message(message)
         if isinstance(approval_event, (CommandApprovalRequest, FileChangeApprovalRequest)):
             if approval_event.thread_id == self._thread_id:
-                self._state.set_attention(0, "approval")
-                self._session.send_snapshot()
+                self._sync_attention()
             self._emit(self._console.render())
             return
         if isinstance(approval_event, ApprovalResolved):
             if approval_event.request.thread_id == self._thread_id:
-                has_thread_approval = any(item.slot == 1 for item in self._coordinator.pending)
-                if not has_thread_approval:
-                    self._state.set_attention(0, None, require_active=True)
-                self._session.send_snapshot()
+                self._sync_attention()
             self._emit(self._console.render())
+            return
+
+        if "id" in message:
+            request_id = message["id"]
+            if not isinstance(request_id, (int, str)) or isinstance(request_id, bool):
+                raise AppServerProtocolError("app-server request ID is invalid")
+            self._client.reject_request(request_id)
+            self._rejected_request_ids.add(request_id)
+            self._emit("unsupported_server_request REJECTED\n")
             return
 
         operation_event = self._operations.handle_notification(message)
@@ -143,6 +191,19 @@ class _EventPump:
             self._state.turn_completed(0)
             self._session.send_snapshot()
             self._emit("turn_completed PASS\n")
+
+    def _sync_attention(self) -> None:
+        if any(item.slot == 1 for item in self._coordinator.pending):
+            attention = "approval"
+        elif any(
+            item.thread_id == self._thread_id
+            for item in self._user_input_coordinator.pending
+        ):
+            attention = "question"
+        else:
+            attention = None
+        self._state.set_attention(0, attention, require_active=True)
+        self._session.send_snapshot()
 
     def _record_error(self, error: BaseException) -> None:
         if self._errors.empty():
@@ -192,7 +253,8 @@ def run_controller(
                 name="cardputer-codex-controller",
                 title="Cardputer Codex Controller",
                 version="0.0.0",
-            )
+            ),
+            experimental_api=True,
         )
         operations = AppServerOperations(client)
         controller_thread = operations.start_thread(
@@ -225,6 +287,10 @@ def run_controller(
             codex_version=initialized.codex_version,
         )
         console = HostApprovalConsole(coordinator)
+        user_input_coordinator = HostUserInputCoordinator(
+            send_response=client.respond,
+        )
+        user_input_console = HostUserInputConsole(user_input_coordinator)
 
         def handle_device_decision(approval_id: str, decision: str) -> bool:
             accepted = coordinator.handle_device_decision(approval_id, decision)
@@ -249,6 +315,8 @@ def run_controller(
             operations=operations,
             coordinator=coordinator,
             console=console,
+            user_input_coordinator=user_input_coordinator,
+            user_input_console=user_input_console,
             state=state,
             session=session,
             thread_id=controller_thread.thread_id,
@@ -258,7 +326,7 @@ def run_controller(
         emit("controller_ready PASS\n")
         emit(
             "commands: run <text> | wait | pending | approve <id> | "
-            "decline <id> | cancel <id> | interrupt | quit\n"
+            "decline <id> | cancel <id> | answer <id> <text> | interrupt | quit\n"
         )
 
         while True:
@@ -273,6 +341,7 @@ def run_controller(
                 break
             if command_line == "pending":
                 emit(console.render())
+                emit(user_input_console.render())
                 continue
             if command_line == "wait":
                 deadline = time.monotonic() + step_timeout
@@ -286,6 +355,13 @@ def run_controller(
                         emit("turn_wait BLOCKED pending_approval\n")
                         wait_incomplete = True
                         break
+                    if any(
+                        item.status == "awaiting_answer"
+                        for item in user_input_coordinator.pending
+                    ):
+                        emit("turn_wait BLOCKED pending_question\n")
+                        wait_incomplete = True
+                        break
                     if time.monotonic() >= deadline:
                         emit("turn_wait TIMEOUT\n")
                         wait_incomplete = True
@@ -297,8 +373,18 @@ def run_controller(
             if command_line.startswith(
                 ("approve ", "decline ", "cancel ")
             ):
-                accepted = console.execute(command_line)
+                try:
+                    accepted = console.execute(command_line)
+                except ValueError:
+                    accepted = False
                 emit(f"approval_response {'PASS' if accepted else 'REJECTED'}\n")
+                continue
+            if command_line.startswith("answer "):
+                try:
+                    accepted = user_input_console.execute(command_line)
+                except ValueError:
+                    accepted = False
+                emit(f"question_response {'PASS' if accepted else 'REJECTED'}\n")
                 continue
             if command_line == "interrupt":
                 active_turn = operations.active_turn(controller_thread.thread_id)

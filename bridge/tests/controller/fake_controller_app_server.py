@@ -22,10 +22,20 @@ def _write(value: object) -> None:
 
 
 def main() -> int:
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
     mode = sys.argv[1] if len(sys.argv) > 1 else "idle"
     initialize = _read()
     if initialize is None or initialize.get("method") != "initialize":
         return 10
+    initialize_params = initialize.get("params")
+    if not isinstance(initialize_params, dict):
+        return 21
+    capabilities = initialize_params.get("capabilities")
+    if not isinstance(capabilities, dict):
+        return 22
+    if capabilities.get("experimentalApi") is not True:
+        return 23
     _write(
         {
             "id": initialize.get("id"),
@@ -85,7 +95,14 @@ def main() -> int:
                 },
             }
         )
-    elif mode in ("turn", "turn_approval", "turn_interrupt"):
+    elif mode in (
+        "turn",
+        "turn_approval",
+        "turn_interrupt",
+        "turn_mixed_pending",
+        "turn_user_input",
+        "unsupported_request",
+    ):
         turn_start = _read()
         if turn_start is None or turn_start.get("method") != "turn/start":
             return 17
@@ -106,6 +123,34 @@ def main() -> int:
                 },
             }
         )
+        if mode == "unsupported_request":
+            _write(
+                {
+                    "id": "rpc-unsupported-private",
+                    "method": "item/tool/unsupportedExperimental",
+                    "params": {
+                        "threadId": "thread-controller",
+                        "turnId": "turn-1",
+                    },
+                }
+            )
+            if _read() != {
+                "id": "rpc-unsupported-private",
+                "error": {
+                    "code": -32601,
+                    "message": "unsupported server request",
+                },
+            }:
+                return 27
+            _write(
+                {
+                    "method": "serverRequest/resolved",
+                    "params": {
+                        "requestId": "rpc-unsupported-private",
+                        "threadId": "thread-controller",
+                    },
+                }
+            )
         if mode == "turn_interrupt":
             interrupt = _read()
             if interrupt is None or interrupt.get("method") != "turn/interrupt":
@@ -139,6 +184,117 @@ def main() -> int:
                     "method": "serverRequest/resolved",
                     "params": {
                         "requestId": "rpc-private",
+                        "threadId": "thread-controller",
+                    },
+                }
+            )
+        elif mode == "turn_user_input":
+            time.sleep(0.05)
+            _write(
+                {
+                    "id": "rpc-question-private",
+                    "method": "item/tool/requestUserInput",
+                    "params": {
+                        "threadId": "thread-controller",
+                        "turnId": "turn-1",
+                        "itemId": "item-question-private",
+                        "questions": [
+                            {
+                                "id": "schema-question-private",
+                                "header": "方針",
+                                "question": "合成方針を選んでください",
+                                "isOther": True,
+                                "isSecret": False,
+                                "options": [
+                                    {"label": "A", "description": "最小構成"},
+                                    {"label": "B", "description": "拡張構成"},
+                                ],
+                            }
+                        ],
+                    },
+                }
+            )
+            if _read() != {
+                "id": "rpc-question-private",
+                "result": {
+                    "answers": {
+                        "schema-question-private": {"answers": ["A で進める"]}
+                    }
+                },
+            }:
+                return 24
+            _write(
+                {
+                    "method": "serverRequest/resolved",
+                    "params": {
+                        "requestId": "rpc-question-private",
+                        "threadId": "thread-controller",
+                    },
+                }
+            )
+        elif mode == "turn_mixed_pending":
+            time.sleep(0.05)
+            _write(
+                {
+                    "id": "rpc-question-private",
+                    "method": "item/tool/requestUserInput",
+                    "params": {
+                        "threadId": "thread-controller",
+                        "turnId": "turn-1",
+                        "itemId": "item-question-private",
+                        "questions": [
+                            {
+                                "id": "schema-question-private",
+                                "header": "方針",
+                                "question": "合成方針を選んでください",
+                                "isSecret": False,
+                            }
+                        ],
+                    },
+                }
+            )
+            _write(
+                {
+                    "id": "rpc-approval-private",
+                    "method": "item/commandExecution/requestApproval",
+                    "params": {
+                        "threadId": "thread-controller",
+                        "turnId": "turn-1",
+                        "itemId": "item-approval-private",
+                        "startedAtMs": 1000,
+                        "command": "tool --check fixture.txt",
+                        "cwd": "workspace/fixture",
+                    },
+                }
+            )
+            if _read() != {
+                "id": "rpc-approval-private",
+                "result": {"decision": "decline"},
+            }:
+                return 25
+            _write(
+                {
+                    "method": "serverRequest/resolved",
+                    "params": {
+                        "requestId": "rpc-approval-private",
+                        "threadId": "thread-controller",
+                    },
+                }
+            )
+            if _read() != {
+                "id": "rpc-question-private",
+                "result": {
+                    "answers": {
+                        "schema-question-private": {"answers": ["A"]}
+                    }
+                },
+            }:
+                return 26
+            _write(
+                {
+                    "method": "serverRequest/resolved",
+                    "params": {
+                        "requestId": "rpc-question-private",
                         "threadId": "thread-controller",
                     },
                 }

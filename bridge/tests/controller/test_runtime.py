@@ -117,7 +117,88 @@ class DeviceInterruptInput(io.StringIO):
             assert self._output.wait_for("device_interrupt PASS")
             self._step += 1
             return "wait\n"
-        assert self._output.wait_for("turn_wait PASS")
+        assert self._output.wait_for("turn_wait PASS"), self._output.getvalue()
+        return "quit\n"
+
+
+class UserInput(io.StringIO):
+    def __init__(self, output: CoordinatedOutput) -> None:
+        super().__init__()
+        self._output = output
+        self._step = 0
+
+    def readline(self, size: int = -1) -> str:
+        del size
+        if self._step == 0:
+            self._step += 1
+            return "run Ask one synthetic question\n"
+        if self._step == 1:
+            assert self._output.wait_for("pending questions: 1")
+            self._step += 1
+            return "answer question-000001 A で進める\n"
+        if self._step == 2:
+            assert self._output.wait_for(
+                "pending questions: 0"
+            ), self._output.getvalue()
+            self._step += 1
+            return "wait\n"
+        assert self._output.wait_for("turn_wait PASS"), self._output.getvalue()
+        return "quit\n"
+
+
+class MixedPendingInput(io.StringIO):
+    def __init__(
+        self,
+        output: CoordinatedOutput,
+        provider: SyntheticSerialProvider,
+    ) -> None:
+        super().__init__()
+        self._output = output
+        self._provider = provider
+        self._step = 0
+
+    def readline(self, size: int = -1) -> str:
+        del size
+        if self._step == 0:
+            self._step += 1
+            return "run Ask and request approval\n"
+        if self._step == 1:
+            assert self._output.wait_for("pending approvals: 1")
+            assert self._output.wait_for("pending questions: 1")
+            self._step += 1
+            return "decline approval-000001\n"
+        if self._step == 2:
+            assert self._output.wait_for("pending approvals: 0")
+            attentions = [
+                message["slots"][0]["attentionKind"]
+                for message in self._provider.decoded_host_messages()
+                if message["t"] == "state"
+            ]
+            approval_index = attentions.index("approval")
+            assert "question" in attentions[:approval_index]
+            assert "question" in attentions[approval_index + 1 :]
+            self._step += 1
+            return "answer question-000001 A\n"
+        if self._step == 3:
+            assert self._output.wait_for("pending questions: 0")
+            self._step += 1
+            return "wait\n"
+        assert self._output.wait_for("turn_wait PASS"), self._output.getvalue()
+        return "quit\n"
+
+
+class UnsupportedRequestInput(io.StringIO):
+    def __init__(self, output: CoordinatedOutput) -> None:
+        super().__init__()
+        self._output = output
+        self._step = 0
+
+    def readline(self, size: int = -1) -> str:
+        del size
+        if self._step == 0:
+            self._step += 1
+            return "run Trigger unsupported request\n"
+        assert self._output.wait_for("turn_completed PASS"), self._output.getvalue()
         return "quit\n"
 
 
@@ -145,6 +226,7 @@ def test_controller_runtime_reaches_device_ready_and_closes_cleanly(
     assert "device_link PASS\n" in result
     assert "controller_ready PASS\n" in result
     assert "cancel <id>" in result
+    assert "answer <id> <text>" in result
     assert result.endswith("controller_stopped PASS\n")
     assert str(tmp_path) not in result
     messages = provider.decoded_host_messages()
@@ -301,6 +383,123 @@ def test_controller_wait_returns_to_console_when_approval_arrives(
     assert "approval_response PASS\n" in result
     assert "turn_completed PASS\n" in result
     assert "turn_wait PASS\n" in result
+    assert result.endswith("controller_stopped PASS\n")
+
+
+def test_controller_answers_single_question_without_exposing_answer(
+    tmp_path: Path,
+) -> None:
+    provider = SyntheticSerialProvider()
+    output = CoordinatedOutput()
+
+    run_controller(
+        output,
+        UserInput(output),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(sys.executable, "-u", str(FAKE_SERVER), "turn_user_input"),
+        step_timeout=2.0,
+    )
+
+    result = output.getvalue()
+    assert "turn_wait BLOCKED pending_question\n" not in result
+    assert "pending questions: 1\n" in result
+    assert "question_response PASS\n" in result
+    assert "pending questions: 0\n" in result
+    assert "A で進める" not in result
+    assert "rpc-question-private" not in result
+    assert "schema-question-private" not in result
+    states = [
+        message for message in provider.decoded_host_messages() if message["t"] == "state"
+    ]
+    assert any(state["slots"][0]["attentionKind"] == "question" for state in states)
+    assert result.endswith("controller_stopped PASS\n")
+
+
+def test_controller_wait_returns_to_console_when_question_arrives(
+    tmp_path: Path,
+) -> None:
+    provider = SyntheticSerialProvider()
+    output = io.StringIO()
+
+    run_controller(
+        output,
+        io.StringIO(
+            "run Ask one synthetic question\n"
+            "wait\n"
+            "answer question-000001 A で進める\n"
+            "wait\n"
+            "quit\n"
+        ),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(sys.executable, "-u", str(FAKE_SERVER), "turn_user_input"),
+        step_timeout=2.0,
+    )
+
+    result = output.getvalue()
+    assert "turn_wait BLOCKED pending_question\n" in result
+    assert "question_response PASS\n" in result
+    assert "turn_completed PASS\n" in result
+    assert "turn_wait PASS\n" in result
+    assert "A で進める" not in result
+    assert result.endswith("controller_stopped PASS\n")
+
+
+def test_controller_routes_mixed_resolutions_and_restores_question_attention(
+    tmp_path: Path,
+) -> None:
+    provider = SyntheticSerialProvider()
+    output = CoordinatedOutput()
+
+    run_controller(
+        output,
+        MixedPendingInput(output, provider),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(sys.executable, "-u", str(FAKE_SERVER), "turn_mixed_pending"),
+        step_timeout=2.0,
+    )
+
+    result = output.getvalue()
+    assert "approval_response PASS\n" in result
+    assert "question_response PASS\n" in result
+    assert "turn_completed PASS\n" in result
+    assert result.endswith("controller_stopped PASS\n")
+
+
+def test_controller_fails_closed_for_unsupported_server_request(
+    tmp_path: Path,
+) -> None:
+    provider = SyntheticSerialProvider()
+    output = CoordinatedOutput()
+
+    run_controller(
+        output,
+        UnsupportedRequestInput(output),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(sys.executable, "-u", str(FAKE_SERVER), "unsupported_request"),
+        step_timeout=2.0,
+    )
+
+    result = output.getvalue()
+    assert "unsupported_server_request REJECTED\n" in result
+    assert "unsupported_server_request RESOLVED\n" in result
+    assert "rpc-unsupported-private" not in result
+    assert "turn_completed PASS\n" in result
     assert result.endswith("controller_stopped PASS\n")
 
 

@@ -13,7 +13,7 @@ M5Stack Cardputer-Advを、Codexの状態確認・選択・安全な承認・中
 - USB切断、Codex停止、再起動から安全に復帰する
 - 判断の一次防御をホスト側へ置き、デバイスを二次防御として使う
 
-自由文入力、未知形式の構造化質問、高リスク承認のデバイス許可は初期版の対象外です。音声入力はv1.1候補です。
+Cardputer上の自由文入力、未知形式の構造化質問、高リスク承認のデバイス許可は初期版の対象外です。音声入力はv1.1候補です。
 
 ## 構成
 
@@ -125,7 +125,9 @@ cardputer-codex-controller e2e --port-handle local-private/device-port.txt --dry
 cardputer-codex-controller control --synthetic --cwd . --label main
 ```
 
-起動後は`run <text>`、`wait`、`pending`、`approve <id>`、`decline <id>`、`cancel <id>`、`interrupt`、`quit`を使用します。`wait`は完了時に`PASS`、未応答approval受信時に`BLOCKED pending_approval`、待機上限到達時に`TIMEOUT`を返してREPLへ戻り、controller sessionを終了しません。Threadは`ephemeral=true`、`sandbox=read-only`、`approvalPolicy=on-request`で作成されます。Hostはserverが提示したdecisionだけを送り、deviceへ表示できない追加文脈付きrequestはhost-onlyに留めます。
+起動後は`run <text>`、`wait`、`pending`、`approve <id>`、`decline <id>`、`cancel <id>`、`answer <id> <text>`、`interrupt`、`quit`を使用します。`answer`は単一・非secretの`requestUserInput`だけをhostから応答し、回答本文をlogやCardputerへ送りません。複数質問とsecret入力は誤送信せずpendingへ残すため、現版では`interrupt`でturnを中断します。
+
+`wait`は完了時に`PASS`、未応答approval受信時に`BLOCKED pending_approval`、未応答質問受信時に`BLOCKED pending_question`、待機上限到達時に`TIMEOUT`を返してREPLへ戻り、controller sessionを終了しません。Threadは`ephemeral=true`、`sandbox=read-only`、`approvalPolicy=on-request`で作成されます。Hostはserverが提示したdecisionだけを送り、deviceへ表示できない追加文脈付きrequestはhost-onlyに留めます。
 
 実portの選択経路だけを確認する場合は、Git管理外のhandleと`--dry-run`を使用します。このcommandはserial I/OもCodexも開始しません。
 
@@ -145,9 +147,10 @@ cardputer-codex-controller control --port-handle local-private/device-port.txt -
 - 実Codex・合成USB CDC E2E: 実装済み
 - M2 host runtime・SCR-HOME/RUN・G0 interrupt・stale/reconnect: 実Codexとproduction実機で受入済み
 - M3 approval coordinator・host response surface・物理accept/decline/hold・accept禁止guard・複数pending: production実機で受入済み
+- M4 host `answer`最小面: 単一・非secret質問を合成app-server E2Eで受入済み
 - 実USB CDC controller E2E: 実Codexとproduction実機で受入済み
 - 専用`e2e` commandの実port経路: 未検証（production受入は`control` commandで実施）
-- multi-client・ADR・M4 interaction・M6運用: 継続中
+- multi-client・ADR・M4 device interaction・複数/secret質問・M6運用: 継続中
 - 実機書き込み: M1診断firmware v0.1.3とproduction imageを受入済み
 
 ## 免責

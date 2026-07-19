@@ -49,6 +49,8 @@ Effort候補は現在modelに対応する`model/list.data[].supportedReasoningEf
 
 Deviceで`0`を選ぶ保留はrequestを解決せず、host bridgeのpending queueへ残します。Bridgeは未解決のapproval、構造化質問、deviceで保留した項目を、ID、slot、種別、要約、経過時間、`contentComplete`、`riskClass`とともに常時表示します。
 
-初期版は`approve <id>`、`decline <id>`、`cancel <id>`のapproval操作面を提供します。Serverが提示したdecisionだけを同名で送り、semantic contextを完全表示できない場合はhostでもapproveを出しません。`answer <id> <text>`、`acceptForSession`、policy amendment、構造化質問はM4のhost surface拡張で扱います。Deviceで禁止された切り詰めまたはhigh-risk approvalのacceptは、hostが原requestを完全表示できる場合だけ提供します。
+初期版は`approve <id>`、`decline <id>`、`cancel <id>`のapproval操作面を提供します。Serverが提示したdecisionだけを同名で送り、semantic contextを完全表示できない場合はhostでもapproveを出しません。Deviceで禁止された切り詰めまたはhigh-risk approvalのacceptは、hostが原requestを完全表示できる場合だけ提供します。
+
+M4の最小host面として`answer <id> <text>`を提供し、単一・非secretの`item/tool/requestUserInput`だけへ応答します。複数質問は1 commandとresponse全体を安全に相関できず、secret質問は通常REPLが入力をechoするため、いずれも`answer=unavailable`としてpendingへ残します。空回答、4 KiB超、未知ID、二重回答、解決後の遅延回答を拒否し、回答本文と生のRPC・question IDは表示・log・device送信しません。`acceptForSession`、policy amendment、複数質問、secret入力、device上の構造化質問は後続M4で扱います。
 
 Deviceまたはhostのどちらで解決しても同じpending正本を更新し、`serverRequest/resolved`を受けて他方の表示を追従させます。受入試験では「deviceで保留 → host queueに表示 → hostで応答 → deviceがresolvedへ追従」を一連で確認します。
