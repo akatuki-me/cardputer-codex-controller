@@ -386,6 +386,7 @@ void setup() {
     M5Cardputer.Display.setTextFont(1);
     M5Cardputer.Display.setTextSize(1);
     M5Cardputer.Display.setBrightness(128);
+    Serial.setRxBufferSize(kDeviceLinkSerialRxBufferBytes);
     Serial.begin(115200);
 
     tx_queue.send_hello();

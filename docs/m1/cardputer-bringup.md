@@ -34,7 +34,7 @@ Hostはserial openごとに新しいsessionと送信`seq=1`を作ります。Fir
 
 ## 非侵襲gate結果
 
-- native fixture: 13 passed、0 failed
+- native fixture: 14 passed、0 failed
 - host bring-up fixture: firmware version、board、handshake、4 KiB echo、RTT、throughput、heartbeat、keyboard、G0をPASS
 - host reconnect fixture: 接続ごとのsession更新、送信`seq=1`へのreset、継続するdevice sequenceの受理をPASS
 - host dry-run fixture: providerを生成せず、serial I/OとCodex接続を行わないことをPASS
@@ -48,6 +48,7 @@ Hostはserial openごとに新しいsessionと送信`seq=1`を作ります。Fir
 - production build: PASS、RAM 32,188 bytes、Flash 481,469 bytes
 - ROM loader read-only probe: ESP32-S3、8 MB flashを確認
 - flasher stub path: stub起動後のflash ID要求で通信が途切れ、erase/write開始前に停止
+- USB CDC RX queue: 既定256 byteから最大host line 2本分の8192 byteへ拡張
 
 Native fixtureはWindows側に`gcc/g++`がないため、同じsourceをWSLの`g++ 13.3.0`でcompileして実行しました。Cardputer向け2 targetはPlatformIO 6.1.18、Espressif32 6.7.0でbuildしました。
 

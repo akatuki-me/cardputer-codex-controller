@@ -6,6 +6,7 @@
 namespace cardputer_bringup {
 
 constexpr std::size_t kBringupHostLineMaxBytes = 4096;
+constexpr std::size_t kBringupSerialRxBufferBytes = kBringupHostLineMaxBytes * 2;
 constexpr std::size_t kBringupSessionMaxBytes = 32;
 constexpr std::uint32_t kBringupLongPressMs = 500;
 

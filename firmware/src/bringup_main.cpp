@@ -295,6 +295,7 @@ void setup() {
     M5Cardputer.begin(config, true);
     M5Cardputer.Display.setRotation(1);
     M5Cardputer.Display.setBrightness(128);
+    Serial.setRxBufferSize(kBringupSerialRxBufferBytes);
     Serial.begin(115200);
     send_hello();
     last_hello_ms = millis();

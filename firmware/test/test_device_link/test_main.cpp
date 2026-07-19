@@ -240,6 +240,17 @@ void test_bringup_line_receiver_accepts_4096_and_rejects_4097_bytes() {
     TEST_ASSERT_EQUAL_UINT32(0, receiver.buffered_bytes());
 }
 
+void test_usb_rx_buffers_cover_two_maximum_host_lines() {
+    TEST_ASSERT_EQUAL_UINT32(
+        kHostToDeviceMaxBytes * 2,
+        kDeviceLinkSerialRxBufferBytes
+    );
+    TEST_ASSERT_EQUAL_UINT32(
+        kBringupHostLineMaxBytes * 2,
+        kBringupSerialRxBufferBytes
+    );
+}
+
 void test_bringup_session_resets_sequence_only_for_a_new_session() {
     HostSessionGate gate;
 
@@ -322,6 +333,7 @@ int main(int, char**) {
     RUN_TEST(test_high_risk_and_incomplete_never_offer_accept);
     RUN_TEST(test_resolved_requires_matching_id);
     RUN_TEST(test_bringup_line_receiver_accepts_4096_and_rejects_4097_bytes);
+    RUN_TEST(test_usb_rx_buffers_cover_two_maximum_host_lines);
     RUN_TEST(test_bringup_session_resets_sequence_only_for_a_new_session);
     RUN_TEST(test_bringup_checksum_is_fnv1a_32);
     RUN_TEST(test_g0_tracker_distinguishes_499ms_short_and_500ms_long_once);
