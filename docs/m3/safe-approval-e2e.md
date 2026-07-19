@@ -51,6 +51,7 @@ Codex CLI 0.144.6の実command approvalでは、文字列decisionとamendment ob
 - Incomplete file approvalのlocal hold、accept禁止、物理decline、対象書き込み未発生: PASS
 - 完全なlow-risk fixtureの物理accept、複数pending残数、自動送り、2件目decline、pending zero: PASS
 - Controller終了後のstaleとnew host session/full snapshotによる再接続: PASS
+- Stale状態からactive/full snapshot: 1,766ms、6秒以内をPASS
 
 Production firmwareの書き込み、自動reset、最初の実port open、実Codex controller E2Eまで完了しています。実測で検出したEnter special-key判定と`wait`のapproval/timeout復帰を修正し、再書き込み後に物理操作を再受入しました。
 

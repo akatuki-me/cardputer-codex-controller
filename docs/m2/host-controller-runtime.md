@@ -25,7 +25,7 @@ Codex CLI 0.144.6とのlocal acceptanceで、initialize、thread start、device 
 
 ## Production実機受入
 
-Production firmwareと実Codex CLI 0.144.6を接続し、`CODEX HOME`と緑色`UP`、turn開始時のRUN、完了後の状態反映、G0長押しによる`turn/interrupt`を確認しました。Controller終了後は6秒以内にlink staleとなり、再起動後はnew host sessionのhandshakeとfull snapshotでHOMEへ復帰しました。
+Production firmwareと実Codex CLI 0.144.6を接続し、`CODEX HOME`と緑色`UP`、turn開始時のRUN、完了後の状態反映、G0長押しによる`turn/interrupt`を確認しました。Controller終了後は6秒以内にlink staleとなり、再起動後はnew host sessionのhandshakeとfull snapshotでHOMEへ復帰しました。Stale状態からのhost接続開始〜active/full snapshotは1,766msで、6秒基準をPASSしました。
 
 実測中に、長いturnまたはapproval待ちで`wait`がREPLを占有しcontroller全体をtimeout終了させる問題を検出しました。Pending受信時は`BLOCKED pending_approval`、待機上限時は`TIMEOUT`でREPLへ戻す回帰テストを追加し、実Codexのhost cancel、resolved、turn completionで修正を確認しています。
 
