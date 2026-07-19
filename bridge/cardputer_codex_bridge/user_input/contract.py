@@ -25,6 +25,7 @@ from .types import (
 USER_INPUT_REQUEST_METHOD = "item/tool/requestUserInput"
 SERVER_REQUEST_RESOLVED_METHOD = "serverRequest/resolved"
 MAX_ANSWER_BYTES = 4096
+MAX_REQUEST_ANSWER_BYTES = 16384
 _MAX_UINT64 = (1 << 64) - 1
 
 type ResponseSender = Callable[[RequestId, JsonObject], None]
@@ -36,6 +37,7 @@ class UserInputContract:
     def __init__(self, send_response: ResponseSender) -> None:
         self._send_response = send_response
         self._pending: dict[RequestId, PendingUserInput] = {}
+        self._answers: dict[RequestId, dict[str, str]] = {}
         self._lock = threading.Lock()
 
     @property
@@ -63,7 +65,14 @@ class UserInputContract:
             return self._resolve(message)
         return None
 
-    def respond(self, request_id: RequestId, question_id: str, answer: str) -> None:
+    def respond(
+        self,
+        request_id: RequestId,
+        question_id: str,
+        answer: str,
+        *,
+        secret_surface: bool = False,
+    ) -> bool:
         _require_request_id(request_id)
         if not isinstance(question_id, str):
             raise UserInputProtocolError("question ID must be a string")
@@ -79,22 +88,75 @@ class UserInputContract:
                 raise UserInputRequestIdError("user input response ID is not pending")
             if pending.status is not UserInputStatus.AWAITING_ANSWER:
                 raise UserInputStateError("user input request already has a response")
-            questions = pending.request.questions
-            if len(questions) != 1:
-                raise UserInputStateError("structured questions require another surface")
-            question = questions[0]
-            if question.is_secret:
-                raise UserInputStateError("secret input requires a no-echo surface")
-            if question.question_id != question_id:
+            question = next(
+                (
+                    item
+                    for item in pending.request.questions
+                    if item.question_id == question_id
+                ),
+                None,
+            )
+            if question is None:
                 raise UserInputStateError("question ID does not match request")
+            if question.is_secret and not secret_surface:
+                raise UserInputStateError("secret input requires a no-echo surface")
+            if not question.is_secret and secret_surface:
+                raise UserInputStateError("no-echo surface is only for secret input")
+            _validate_choice(question, answer)
+            staged = self._answers[request_id]
+            if question_id in staged:
+                raise UserInputStateError("question already has an answer")
+            total_bytes = sum(
+                len(value.encode("utf-8")) for value in staged.values()
+            ) + len(answer.encode("utf-8"))
+            if total_bytes > MAX_REQUEST_ANSWER_BYTES:
+                raise UserInputStateError("answers exceed the request limit")
+            candidate = {**staged, question_id: answer}
+            answered_question_ids = frozenset(candidate)
+            if len(candidate) < len(pending.request.questions):
+                self._answers[request_id] = candidate
+                self._pending[request_id] = replace(
+                    pending,
+                    answered_question_ids=answered_question_ids,
+                )
+                return False
             result: JsonObject = {
-                "answers": {question_id: {"answers": [answer]}}
+                "answers": {
+                    item.question_id: {"answers": [candidate[item.question_id]]}
+                    for item in pending.request.questions
+                }
             }
             self._send_response(request_id, result)
+            self._answers.pop(request_id, None)
             self._pending[request_id] = replace(
                 pending,
                 status=UserInputStatus.RESPONSE_SENT,
+                answered_question_ids=answered_question_ids,
             )
+            return True
+
+    def discard_turn(
+        self,
+        thread_id: str,
+        turn_id: str,
+    ) -> tuple[UserInputRequest, ...]:
+        with self._lock:
+            discarded = tuple(
+                pending.request
+                for pending in self._pending.values()
+                if pending.status is UserInputStatus.AWAITING_ANSWER
+                and pending.request.thread_id == thread_id
+                and pending.request.turn_id == turn_id
+            )
+            for request in discarded:
+                pending = self._pending[request.request_id]
+                self._pending[request.request_id] = replace(
+                    pending,
+                    status=UserInputStatus.DISCARDED,
+                    answered_question_ids=frozenset(),
+                )
+                self._answers.pop(request.request_id, None)
+            return discarded
 
     def _register(self, request: UserInputRequest) -> None:
         with self._lock:
@@ -104,6 +166,7 @@ class UserInputContract:
                 request=request,
                 status=UserInputStatus.AWAITING_ANSWER,
             )
+            self._answers[request.request_id] = {}
 
     def _resolve(self, message: JsonObject) -> UserInputResolved:
         params = _require_params(message)
@@ -120,6 +183,7 @@ class UserInputContract:
                     "resolved user input thread does not match request"
                 )
             del self._pending[checked_request_id]
+            self._answers.pop(checked_request_id, None)
             return UserInputResolved(
                 request=pending.request,
                 response_sent=pending.status is UserInputStatus.RESPONSE_SENT,
@@ -134,6 +198,8 @@ def _parse_request(message: JsonObject) -> UserInputRequest:
     if not isinstance(questions_value, list):
         raise UserInputProtocolError("user input questions must be an array")
     questions = tuple(_parse_question(value) for value in questions_value)
+    if not questions:
+        raise UserInputProtocolError("user input questions must not be empty")
     question_ids = {question.question_id for question in questions}
     if len(question_ids) != len(questions):
         raise UserInputProtocolError("user input question IDs must be unique")
@@ -186,6 +252,13 @@ def _parse_option(value: JsonValue) -> UserInputOption:
     )
 
 
+def _validate_choice(question: UserInputQuestion, answer: str) -> None:
+    if not question.options or question.is_other:
+        return
+    if answer not in {option.label for option in question.options}:
+        raise UserInputStateError("answer must match an available option")
+
+
 def _require_params(message: JsonObject) -> JsonObject:
     params = message.get("params")
     if not isinstance(params, dict):
@@ -220,6 +293,7 @@ def _require_request_id(value: JsonValue | RequestId) -> None:
 
 __all__ = [
     "MAX_ANSWER_BYTES",
+    "MAX_REQUEST_ANSWER_BYTES",
     "SERVER_REQUEST_RESOLVED_METHOD",
     "USER_INPUT_REQUEST_METHOD",
     "UserInputContract",

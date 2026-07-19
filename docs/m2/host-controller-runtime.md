@@ -12,7 +12,7 @@
 - app-server event threadとserial threadが共有するcontroller stateを単一同期境界で更新
 - focus中active turnだけを`turn/interrupt`へ転送
 - device `hello`後にhost `hello`とfull snapshotを送信し、再接続で再発行
-- host consoleから`run`、`wait`、`pending`、approval応答、単一・非secret質問への`answer`、`interrupt`、`quit`を操作
+- host consoleから`run`、`wait`、`pending`、approval応答、質問への`answer`、secret no-echo入力、`interrupt`、`quit`を操作
 - `wait`はpending approval、pending question、または待機上限でREPLへ戻り、controller sessionを維持
 - stdin EOFによるapp-server正常終了を最大60秒の有界待機で確認
 

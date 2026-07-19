@@ -33,8 +33,10 @@ from cardputer_codex_bridge.user_input import (
     USER_INPUT_REQUEST_METHOD,
     HostUserInputConsole,
     HostUserInputCoordinator,
+    SecretReader,
     UserInputRequest,
     UserInputResolved,
+    read_tty_secret,
 )
 
 from .device_session import DeviceControllerSession
@@ -51,9 +53,22 @@ class _OperationsInterruptAdapter:
     ) -> None:
         self._operations = operations
         self._emit = emit
+        self._discard_user_input: Callable[[str, str], bool] | None = None
+
+    def configure_discard_user_input(
+        self,
+        handler: Callable[[str, str], bool],
+    ) -> None:
+        if self._discard_user_input is not None:
+            raise RuntimeError("interrupt user-input handler is already configured")
+        self._discard_user_input = handler
 
     def interrupt(self, thread_id: str, turn_id: str) -> None:
+        discard_user_input = self._discard_user_input
+        if discard_user_input is None:
+            raise RuntimeError("interrupt user-input handler is not configured")
         self._operations.interrupt_turn(ThreadId(thread_id), TurnId(turn_id))
+        discard_user_input(thread_id, turn_id)
         self._emit("device_interrupt PASS\n")
 
 
@@ -90,14 +105,18 @@ class _EventPump:
             name="cardputer-controller-events",
             daemon=True,
         )
+        self._started = False
 
     def start(self) -> None:
         self._thread.start()
+        self._started = True
 
     def close(self) -> None:
         self._stop.set()
 
     def join(self) -> None:
+        if not self._started:
+            return
         self._thread.join(timeout=2.0)
         if self._thread.is_alive():
             raise RuntimeError("controller event pump did not stop")
@@ -108,6 +127,13 @@ class _EventPump:
         except queue.Empty:
             return
         raise error
+
+    def discard_user_input(self, thread_id: str, turn_id: str) -> bool:
+        if not self._user_input_coordinator.discard_turn(thread_id, turn_id):
+            return False
+        self._sync_attention()
+        self._emit(self._user_input_console.render())
+        return True
 
     def _run(self) -> None:
         try:
@@ -188,6 +214,10 @@ class _EventPump:
             isinstance(operation_event, TurnCompletedEvent)
             and operation_event.thread_id == self._thread_id
         ):
+            self.discard_user_input(
+                str(operation_event.thread_id),
+                str(operation_event.turn_id),
+            )
             self._state.turn_completed(0)
             self._session.send_snapshot()
             self._emit("turn_completed PASS\n")
@@ -221,6 +251,7 @@ def run_controller(
     synthetic_device: SyntheticSerialProvider | None = None,
     command: Sequence[str] | None = None,
     step_timeout: float = 30.0,
+    secret_reader: SecretReader | None = None,
 ) -> None:
     """単一controller-owned threadをCardputerとhost consoleへ接続する。"""
     checked_cwd = cwd.resolve()
@@ -267,15 +298,21 @@ def run_controller(
         )
         emit("controller_thread PASS\n")
 
+        if secret_reader is None and input_stream.isatty():
+            secret_reader = read_tty_secret
+        user_input_coordinator = HostUserInputCoordinator(
+            send_response=client.respond,
+        )
         state = ControllerState()
         state.configure_slot(
             0,
             label=checked_label,
             thread_id=str(controller_thread.thread_id),
         )
+        interrupt_adapter = _OperationsInterruptAdapter(operations, emit)
         session = DeviceControllerSession(
             state=state,
-            adapter=_OperationsInterruptAdapter(operations, emit),
+            adapter=interrupt_adapter,
             provider=provider,
             port=port,
         )
@@ -287,28 +324,15 @@ def run_controller(
             codex_version=initialized.codex_version,
         )
         console = HostApprovalConsole(coordinator)
-        user_input_coordinator = HostUserInputCoordinator(
-            send_response=client.respond,
+        user_input_console = HostUserInputConsole(
+            user_input_coordinator,
+            secret_reader=secret_reader,
         )
-        user_input_console = HostUserInputConsole(user_input_coordinator)
 
         def handle_device_decision(approval_id: str, decision: str) -> bool:
             accepted = coordinator.handle_device_decision(approval_id, decision)
             emit(f"device_{decision} {'PASS' if accepted else 'REJECTED'}\n")
             return accepted
-
-        session.configure_approval(
-            decision_handler=handle_device_decision,
-            ready_handler=coordinator.republish,
-        )
-        session.start()
-        if not session.wait_connected(step_timeout):
-            raise TimeoutError("controller serial link did not connect")
-        if synthetic_device is not None:
-            synthetic_device.inject({"t": "hello", "seq": 1, "proto": 1})
-        if not session.wait_for_device_hello(step_timeout):
-            raise TimeoutError("controller device hello was not received")
-        emit("device_link PASS\n")
 
         pump = _EventPump(
             client=client,
@@ -322,11 +346,25 @@ def run_controller(
             thread_id=controller_thread.thread_id,
             emit=emit,
         )
+        interrupt_adapter.configure_discard_user_input(pump.discard_user_input)
+        session.configure_approval(
+            decision_handler=handle_device_decision,
+            ready_handler=coordinator.republish,
+        )
+        session.start()
+        if not session.wait_connected(step_timeout):
+            raise TimeoutError("controller serial link did not connect")
+        if synthetic_device is not None:
+            synthetic_device.inject({"t": "hello", "seq": 1, "proto": 1})
+        if not session.wait_for_device_hello(step_timeout):
+            raise TimeoutError("controller device hello was not received")
+        emit("device_link PASS\n")
         pump.start()
         emit("controller_ready PASS\n")
         emit(
             "commands: run <text> | wait | pending | approve <id> | "
-            "decline <id> | cancel <id> | answer <id> <text> | interrupt | quit\n"
+            "decline <id> | cancel <id> | answer <id> <text> | "
+            "secret <id> | interrupt | quit\n"
         )
 
         while True:
@@ -379,7 +417,7 @@ def run_controller(
                     accepted = False
                 emit(f"approval_response {'PASS' if accepted else 'REJECTED'}\n")
                 continue
-            if command_line.startswith("answer "):
+            if command_line.startswith(("answer ", "secret ")):
                 try:
                     accepted = user_input_console.execute(command_line)
                 except ValueError:
@@ -392,6 +430,10 @@ def run_controller(
                     emit("interrupt REJECTED\n")
                 else:
                     operations.interrupt_turn(controller_thread.thread_id, active_turn)
+                    pump.discard_user_input(
+                        str(controller_thread.thread_id),
+                        str(active_turn),
+                    )
                     emit("interrupt PASS\n")
                 continue
             if command_line.startswith("run ") and command_line[4:].strip():

@@ -1,6 +1,7 @@
-from .console import HostUserInputConsole
+from .console import HostUserInputConsole, SecretReader, read_tty_secret
 from .contract import (
     MAX_ANSWER_BYTES,
+    MAX_REQUEST_ANSWER_BYTES,
     SERVER_REQUEST_RESOLVED_METHOD,
     USER_INPUT_REQUEST_METHOD,
     UserInputContract,
@@ -27,8 +28,10 @@ __all__ = [
     "HostUserInputCoordinator",
     "HostUserInputView",
     "MAX_ANSWER_BYTES",
+    "MAX_REQUEST_ANSWER_BYTES",
     "PendingUserInput",
     "SERVER_REQUEST_RESOLVED_METHOD",
+    "SecretReader",
     "USER_INPUT_REQUEST_METHOD",
     "UserInputContract",
     "UserInputError",
@@ -41,4 +44,5 @@ __all__ = [
     "UserInputResolved",
     "UserInputStateError",
     "UserInputStatus",
+    "read_tty_secret",
 ]

@@ -81,7 +81,7 @@ Host consoleもserver提示集合との積集合だけを操作として公開�
 
 ## Host user-input lifecycle
 
-`item/tool/requestUserInput`はapproval decisionではありません。Host controllerは短縮IDを割り当て、単一・非secret質問への`answer <id> <text>`を次のresponseへ変換します。
+`item/tool/requestUserInput`はapproval decisionではありません。Host controllerはrequest内の質問ごとに短縮IDを割り当て、非secret質問への`answer <id> <text>`とsecret質問への`secret <id>`を1つのresponseへ集約します。
 
 ```json
 {
@@ -93,9 +93,9 @@ Host consoleもserver提示集合との積集合だけを操作として公開�
 }
 ```
 
-生のRPC IDと`question.id`は内部相関だけに使い、console、log、deviceへ出しません。Response送信後も`response_sent`としてpendingを維持し、同じ`requestId`と`threadId`の`serverRequest/resolved`でだけ除去します。Serverの`autoResolutionMs`による先行解決も同じnotificationで除去し、後着回答を拒否します。
+各`answer`は対応する`question.id`だけへ蓄積し、全質問が揃うまでresponseを送りません。選択肢があり`isOther=false`ならoption labelとの完全一致だけを受け入れ、`isOther=true`ならlabelまたは自由文を同じ`string[]`へ保持します。1回答はUTF-8で4 KiB、1 request合計は16 KiBを上限とします。
 
-複数質問とsecret質問は自動回答せずhost pendingへ残します。複数回答の蓄積UIとno-echo入力面は後続M4の契約とし、現版で単一回答を複数質問へ複製したり、secretを通常REPLへ流したりしません。詳細は[`m4/host-user-input.md`](m4/host-user-input.md)を参照してください。
+生のRPC ID、`question.id`、item ID、回答本文は内部相関だけに使い、console、log、deviceへ出しません。Secret回答はTTYで有効になるno-echo readerからだけ受け入れ、通常のecho入力面では拒否します。端末がechoを無効化できない場合もecho入力へfallbackせず、その回答操作を拒否します。Response送信後も`response_sent`としてpendingを維持し、同じ`requestId`と`threadId`の`serverRequest/resolved`でだけ除去します。Serverの`autoResolutionMs`による先行解決、host/device interrupt、turn完了では未送信の部分回答を破棄し、後着回答を拒否します。Interruptまたはturn完了後もrequest ownershipだけは本文を持たないtombstoneとしてmatching resolvedまで保持し、resolvedをapprovalなど別consumerへ誤配送しません。詳細は[`m4/host-user-input.md`](m4/host-user-input.md)を参照してください。
 
 `experimentalApi=true`はexperimental surface全体へのopt-inであるため、controllerが対応していないserver requestを黙って放置しません。未知のtop-level request IDへpayloadを含まない固定のJSON-RPC `-32601` errorを即時応答し、そのrequestだけをfail closedします。Rejected IDはmatching `serverRequest/resolved`まで内部保持してapproval/user-inputへ誤配送せず、event pumpは継続します。これにより未応答requestのためmain threadとturnが入力待ちのまま固まる状態を避けます。
 

@@ -51,6 +51,6 @@ Deviceで`0`を選ぶ保留はrequestを解決せず、host bridgeのpending que
 
 初期版は`approve <id>`、`decline <id>`、`cancel <id>`のapproval操作面を提供します。Serverが提示したdecisionだけを同名で送り、semantic contextを完全表示できない場合はhostでもapproveを出しません。Deviceで禁止された切り詰めまたはhigh-risk approvalのacceptは、hostが原requestを完全表示できる場合だけ提供します。
 
-M4の最小host面として`answer <id> <text>`を提供し、単一・非secretの`item/tool/requestUserInput`だけへ応答します。複数質問は1 commandとresponse全体を安全に相関できず、secret質問は通常REPLが入力をechoするため、いずれも`answer=unavailable`としてpendingへ残します。空回答、4 KiB超、未知ID、二重回答、解決後の遅延回答を拒否し、回答本文と生のRPC・question IDは表示・log・device送信しません。`acceptForSession`、policy amendment、複数質問、secret入力、device上の構造化質問は後続M4で扱います。
+M4のhost面は`item/tool/requestUserInput`の各質問へ別local IDを付け、非secretは`answer <id> <text>`、secretはTTYの`secret <id>`で回答します。複数質問は回答済みを`answer_staged`として本文なしで表示し、全件が揃った時点だけ1つのresponseを送ります。通常REPLからsecretへ答える操作、空回答、1回答4 KiB超、request合計16 KiB超、未知ID、二重回答、解決後の遅延回答を拒否します。部分回答はauto resolution、interrupt、turn完了で破棄し、回答本文と生のRPC・question IDは表示・log・device送信しません。`acceptForSession`、policy amendment、device上の構造化質問は後続M4で扱います。
 
 Deviceまたはhostのどちらで解決しても同じpending正本を更新し、`serverRequest/resolved`を受けて他方の表示を追従させます。受入試験では「deviceで保留 → host queueに表示 → hostで応答 → deviceがresolvedへ追従」を一連で確認します。
