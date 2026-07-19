@@ -10,7 +10,7 @@ import cardputer_codex_bridge.controller.runtime as runtime_module
 import pytest
 from cardputer_codex_bridge.cli import main
 from cardputer_codex_bridge.controller.runtime import run_controller
-from cardputer_codex_bridge.device_link import SyntheticSerialProvider
+from cardputer_codex_bridge.device_link import SerialPort, SyntheticSerialProvider
 
 FAKE_SERVER = Path(__file__).with_name("fake_controller_app_server.py")
 
@@ -29,6 +29,18 @@ class CoordinatedOutput(io.StringIO):
     def wait_for(self, value: str, timeout: float = 2.0) -> bool:
         with self.condition:
             return self.condition.wait_for(lambda: value in self.getvalue(), timeout=timeout)
+
+
+class FailingSerialProvider:
+    def open(
+        self,
+        port: str,
+        *,
+        baudrate: int,
+        read_timeout: float,
+    ) -> SerialPort:
+        del port, baudrate, read_timeout
+        raise OSError("synthetic open failure")
 
 
 class ApprovalInput(io.StringIO):
@@ -146,6 +158,113 @@ class UserInput(io.StringIO):
         return "quit\n"
 
 
+class StructuredUserInput(io.StringIO):
+    def __init__(self, output: CoordinatedOutput) -> None:
+        super().__init__()
+        self._output = output
+        self._step = 0
+
+    def isatty(self) -> bool:
+        return True
+
+    def readline(self, size: int = -1) -> str:
+        del size
+        if self._step == 0:
+            self._step += 1
+            return "run Ask structured questions\n"
+        if self._step == 1:
+            assert self._output.wait_for("pending questions: 2")
+            self._step += 1
+            return "answer question-000001 A\n"
+        if self._step == 2:
+            assert self._output.wait_for("question_response PASS")
+            self._step += 1
+            return "pending\n"
+        if self._step == 3:
+            assert self._output.wait_for("status=answer_staged")
+            self._step += 1
+            return "secret question-000002\n"
+        if self._step == 4:
+            assert self._output.wait_for("pending questions: 0")
+            self._step += 1
+            return "wait\n"
+        assert self._output.wait_for("turn_wait PASS"), self._output.getvalue()
+        return "quit\n"
+
+
+class PartialInterruptInput(io.StringIO):
+    def __init__(self, output: CoordinatedOutput) -> None:
+        super().__init__()
+        self._output = output
+        self._step = 0
+
+    def readline(self, size: int = -1) -> str:
+        del size
+        if self._step == 0:
+            self._step += 1
+            return "run Ask then interrupt\n"
+        if self._step == 1:
+            assert self._output.wait_for("pending questions: 2")
+            self._step += 1
+            return "answer question-000001 first-answer\n"
+        if self._step == 2:
+            assert self._output.wait_for("question_response PASS")
+            self._step += 1
+            return "interrupt\n"
+        if self._step == 3:
+            assert self._output.wait_for("pending questions: 0")
+            self._step += 1
+            return "wait\n"
+        assert self._output.wait_for("turn_wait PASS"), self._output.getvalue()
+        return "quit\n"
+
+
+class PartialDeviceInterruptInput(io.StringIO):
+    def __init__(
+        self,
+        output: CoordinatedOutput,
+        provider: SyntheticSerialProvider,
+    ) -> None:
+        super().__init__()
+        self._output = output
+        self._provider = provider
+        self._step = 0
+
+    def readline(self, size: int = -1) -> str:
+        del size
+        if self._step == 0:
+            self._step += 1
+            return "run Ask then device interrupt\n"
+        if self._step == 1:
+            assert self._output.wait_for("pending questions: 2")
+            self._step += 1
+            return "answer question-000001 first-answer\n"
+        if self._step == 2:
+            assert self._output.wait_for("question_response PASS")
+            state = next(
+                message
+                for message in reversed(self._provider.decoded_host_messages())
+                if message["t"] == "state" and message["slots"][0]["turnActive"]
+            )
+            self._provider.inject(
+                {
+                    "t": "interrupt",
+                    "seq": 2,
+                    "slot": 1,
+                    "turnId": state["slots"][0]["turnId"],
+                }
+            )
+            assert self._output.wait_for("device_interrupt PASS")
+            self._step += 1
+            return "pending\n"
+        if self._step == 3:
+            assert self._output.wait_for("pending questions: 0")
+            self._step += 1
+            return "wait\n"
+        assert self._output.wait_for("turn_wait PASS"), self._output.getvalue()
+        return "quit\n"
+
+
 class MixedPendingInput(io.StringIO):
     def __init__(
         self,
@@ -227,11 +346,32 @@ def test_controller_runtime_reaches_device_ready_and_closes_cleanly(
     assert "controller_ready PASS\n" in result
     assert "cancel <id>" in result
     assert "answer <id> <text>" in result
+    assert "secret <id>" in result
     assert result.endswith("controller_stopped PASS\n")
     assert str(tmp_path) not in result
     messages = provider.decoded_host_messages()
     assert [message["t"] for message in messages[:2]] == ["hello", "state"]
     assert messages[1]["slots"][0]["label"] == "fixture"
+
+
+def test_controller_startup_failure_keeps_the_connection_timeout(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+
+    with pytest.raises(TimeoutError, match="serial link did not connect"):
+        run_controller(
+            output,
+            io.StringIO("quit\n"),
+            cwd=tmp_path,
+            label="fixture",
+            port="synthetic",
+            provider=FailingSerialProvider(),
+            command=(sys.executable, "-u", str(FAKE_SERVER), "idle"),
+            step_timeout=0.05,
+        )
+
+    assert "controller event pump did not stop" not in output.getvalue()
 
 
 def test_controller_runtime_allows_bounded_session_end_cleanup(
@@ -416,6 +556,122 @@ def test_controller_answers_single_question_without_exposing_answer(
         message for message in provider.decoded_host_messages() if message["t"] == "state"
     ]
     assert any(state["slots"][0]["attentionKind"] == "question" for state in states)
+    assert result.endswith("controller_stopped PASS\n")
+
+
+def test_controller_collects_multiple_questions_with_no_echo_secret(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = SyntheticSerialProvider()
+    output = CoordinatedOutput()
+    prompts: list[str] = []
+
+    def read_secret(prompt: str) -> str:
+        prompts.append(prompt)
+        return "hidden-value"
+
+    monkeypatch.setattr(runtime_module, "read_tty_secret", read_secret)
+
+    run_controller(
+        output,
+        StructuredUserInput(output),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(sys.executable, "-u", str(FAKE_SERVER), "turn_structured_input"),
+        step_timeout=2.0,
+    )
+
+    result = output.getvalue()
+    assert "question-000001" in result
+    assert "question-000002" in result
+    assert "status=answer_staged" in result
+    assert result.count("question_response PASS\n") == 2
+    assert prompts == ["secret answer: "]
+    assert "hidden-value" not in result
+    assert "structured-first-private" not in result
+    assert "structured-second-private" not in result
+    assert "rpc-structured-private" not in result
+    assert result.endswith("controller_stopped PASS\n")
+
+
+def test_interrupt_discards_partial_answers_without_sending_response(
+    tmp_path: Path,
+) -> None:
+    provider = SyntheticSerialProvider()
+    output = CoordinatedOutput()
+
+    run_controller(
+        output,
+        PartialInterruptInput(output),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(
+            sys.executable,
+            "-u",
+            str(FAKE_SERVER),
+            "turn_user_input_interrupt",
+        ),
+        step_timeout=2.0,
+    )
+
+    result = output.getvalue()
+    assert "question_response PASS\n" in result
+    assert "interrupt PASS\n" in result
+    assert "pending questions: 0\n" in result
+    assert "first-answer" not in result
+    assert "partial-first-private" not in result
+    attentions = [
+        message["slots"][0]["attentionKind"]
+        for message in provider.decoded_host_messages()
+        if message["t"] == "state"
+    ]
+    question_index = attentions.index("question")
+    assert None in attentions[question_index + 1 :]
+    assert result.endswith("controller_stopped PASS\n")
+
+
+def test_device_interrupt_discards_partial_answers_without_response(
+    tmp_path: Path,
+) -> None:
+    provider = SyntheticSerialProvider()
+    output = CoordinatedOutput()
+
+    run_controller(
+        output,
+        PartialDeviceInterruptInput(output, provider),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(
+            sys.executable,
+            "-u",
+            str(FAKE_SERVER),
+            "turn_user_input_interrupt",
+        ),
+        step_timeout=2.0,
+    )
+
+    result = output.getvalue()
+    assert result.count("device_interrupt PASS\n") == 1
+    assert "pending questions: 0\n" in result
+    assert "first-answer" not in result
+    assert "partial-first-private" not in result
+    attentions = [
+        message["slots"][0]["attentionKind"]
+        for message in provider.decoded_host_messages()
+        if message["t"] == "state"
+    ]
+    question_index = attentions.index("question")
+    assert None in attentions[question_index + 1 :]
     assert result.endswith("controller_stopped PASS\n")
 
 

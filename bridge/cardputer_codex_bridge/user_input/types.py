@@ -34,6 +34,7 @@ class UserInputRequest:
 
 class UserInputStatus(Enum):
     AWAITING_ANSWER = "awaiting_answer"
+    DISCARDED = "discarded"
     RESPONSE_SENT = "response_sent"
 
 
@@ -41,6 +42,7 @@ class UserInputStatus(Enum):
 class PendingUserInput:
     request: UserInputRequest
     status: UserInputStatus
+    answered_question_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

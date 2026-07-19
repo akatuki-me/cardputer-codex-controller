@@ -21,4 +21,6 @@ codex app-server generate-json-schema --out <temporary-directory>
 - `ToolRequestUserInputResponse`: `answers`が必須で、question IDごとの値は`{"answers": string[]}`
 - `InitializeCapabilities.experimentalApi`: experimental method/field受信への明示opt-in
 
+Host実装はこのmapを1 requestにつき1回だけ返します。複数質問は全question IDの回答が揃うまで送信せず、`isSecret=true`のno-echo制約はschema外のhost安全境界として実装します。
+
 生成bundle自体はrepositoryへ同梱しません。0.144.6以外の新versionを追加するときは別directoryで再生成し、使用methodと型の差分reviewを行います。

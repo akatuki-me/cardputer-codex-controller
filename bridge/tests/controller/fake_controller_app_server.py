@@ -100,7 +100,9 @@ def main() -> int:
         "turn_approval",
         "turn_interrupt",
         "turn_mixed_pending",
+        "turn_structured_input",
         "turn_user_input",
+        "turn_user_input_interrupt",
         "unsupported_request",
     ):
         turn_start = _read()
@@ -151,7 +153,33 @@ def main() -> int:
                     },
                 }
             )
-        if mode == "turn_interrupt":
+        if mode in ("turn_interrupt", "turn_user_input_interrupt"):
+            if mode == "turn_user_input_interrupt":
+                _write(
+                    {
+                        "id": "rpc-partial-private",
+                        "method": "item/tool/requestUserInput",
+                        "params": {
+                            "threadId": "thread-controller",
+                            "turnId": "turn-1",
+                            "itemId": "item-partial-private",
+                            "questions": [
+                                {
+                                    "id": "partial-first-private",
+                                    "header": "一",
+                                    "question": "一つ目を入力してください",
+                                    "isSecret": False,
+                                },
+                                {
+                                    "id": "partial-second-private",
+                                    "header": "二",
+                                    "question": "二つ目を入力してください",
+                                    "isSecret": False,
+                                },
+                            ],
+                        },
+                    }
+                )
             interrupt = _read()
             if interrupt is None or interrupt.get("method") != "turn/interrupt":
                 return 18
@@ -161,6 +189,17 @@ def main() -> int:
             ) != "turn-1":
                 return 19
             _write({"id": interrupt.get("id"), "result": {}})
+            if mode == "turn_user_input_interrupt":
+                time.sleep(0.05)
+                _write(
+                    {
+                        "method": "serverRequest/resolved",
+                        "params": {
+                            "requestId": "rpc-partial-private",
+                            "threadId": "thread-controller",
+                        },
+                    }
+                )
         elif mode == "turn_approval":
             time.sleep(0.05)
             _write(
@@ -228,6 +267,59 @@ def main() -> int:
                     "method": "serverRequest/resolved",
                     "params": {
                         "requestId": "rpc-question-private",
+                        "threadId": "thread-controller",
+                    },
+                }
+            )
+        elif mode == "turn_structured_input":
+            time.sleep(0.05)
+            _write(
+                {
+                    "id": "rpc-structured-private",
+                    "method": "item/tool/requestUserInput",
+                    "params": {
+                        "threadId": "thread-controller",
+                        "turnId": "turn-1",
+                        "itemId": "item-structured-private",
+                        "questions": [
+                            {
+                                "id": "structured-first-private",
+                                "header": "方針",
+                                "question": "方針を選んでください",
+                                "isOther": False,
+                                "isSecret": False,
+                                "options": [
+                                    {"label": "A", "description": "最小構成"},
+                                    {"label": "B", "description": "拡張構成"},
+                                ],
+                            },
+                            {
+                                "id": "structured-second-private",
+                                "header": "秘密",
+                                "question": "非表示で入力してください",
+                                "isSecret": True,
+                            },
+                        ],
+                    },
+                }
+            )
+            if _read() != {
+                "id": "rpc-structured-private",
+                "result": {
+                    "answers": {
+                        "structured-first-private": {"answers": ["A"]},
+                        "structured-second-private": {
+                            "answers": ["hidden-value"]
+                        },
+                    }
+                },
+            }:
+                return 28
+            _write(
+                {
+                    "method": "serverRequest/resolved",
+                    "params": {
+                        "requestId": "rpc-structured-private",
                         "threadId": "thread-controller",
                     },
                 }
@@ -308,7 +400,9 @@ def main() -> int:
                         "id": "turn-1",
                         "items": [],
                         "status": (
-                            "interrupted" if mode == "turn_interrupt" else "completed"
+                            "interrupted"
+                            if mode in ("turn_interrupt", "turn_user_input_interrupt")
+                            else "completed"
                         ),
                     },
                 },
