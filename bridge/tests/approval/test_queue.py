@@ -1,10 +1,10 @@
-from cardputer_codex_bridge.approval import PendingApproval, PendingQueue, device_decisions
+from cardputer_codex_bridge.approval import DeviceApproval, PendingQueue, device_decisions
 
 
 def test_pending_queue_keeps_all_items_and_advances_after_resolution() -> None:
     queue = PendingQueue()
-    first = PendingApproval("approval-1", "first")
-    second = PendingApproval("approval-2", "second")
+    first = DeviceApproval("approval-1", "first")
+    second = DeviceApproval("approval-2", "second")
     queue.add(first)
     queue.add(second)
 
@@ -18,12 +18,12 @@ def test_pending_queue_keeps_all_items_and_advances_after_resolution() -> None:
 
 
 def test_unsafe_approval_never_presents_accept() -> None:
-    high_risk = PendingApproval("high", "high", risk_class="high")
-    unknown_risk = PendingApproval("unknown", "unknown", risk_class="unknown")
-    incomplete = PendingApproval("incomplete", "incomplete", content_complete=False)
+    high_risk = DeviceApproval("high", "high", risk_class="high")
+    unknown_risk = DeviceApproval("unknown", "unknown", risk_class="unknown")
+    incomplete = DeviceApproval("incomplete", "incomplete", content_complete=False)
 
     assert "accept" not in device_decisions(high_risk)
     assert "accept" not in device_decisions(unknown_risk)
     assert "accept" not in device_decisions(incomplete)
     assert "hold" not in device_decisions(high_risk)
-    assert "accept" in device_decisions(PendingApproval("safe", "safe"))
+    assert "accept" in device_decisions(DeviceApproval("safe", "safe"))

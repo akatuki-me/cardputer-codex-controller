@@ -63,6 +63,19 @@ def test_initialize_sends_initialized_then_shutdowns_normally() -> None:
     assert client.return_code == 0
 
 
+def test_initialize_accepts_schema_verified_patch_version() -> None:
+    client = _client("version-0.144.6")
+    client.start()
+    try:
+        result = client.initialize(CLIENT_INFO)
+        assert result.codex_version == "0.144.6"
+    finally:
+        shutdown = client.close()
+
+    assert shutdown.forced is False
+    assert shutdown.exit_code == 0
+
+
 def test_close_closes_child_stdio_streams() -> None:
     client = _client("normal")
     client.start()

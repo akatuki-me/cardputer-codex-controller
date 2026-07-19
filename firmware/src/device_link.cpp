@@ -122,8 +122,11 @@ void apply_approval(JsonDocument& document, ControllerState& state, std::uint32_
         return;
     }
 
+    const ApprovalState previous = state.approval();
+    const bool updates_current = previous.active && std::strcmp(previous.id, id) == 0;
     ApprovalState next = {};
     next.active = true;
+    next.sending = document["sending"].is<bool>() && document["sending"].as<bool>();
     const int requested_slot = document["slot"] | 0;
     next.slot = static_cast<std::uint8_t>(
         std::max(0, std::min(requested_slot, static_cast<int>(kSlotCount)))
@@ -158,6 +161,20 @@ void apply_approval(JsonDocument& document, ControllerState& state, std::uint32_
         ++next.line_count;
     }
     next.body_end_reached = next.line_count <= kApprovalVisibleLines;
+    if (updates_current) {
+        next.sending = next.sending || previous.sending;
+        next.shown_at_ms = previous.shown_at_ms;
+        const int max_scroll = std::max<int>(0, next.line_count - kApprovalVisibleLines);
+        next.scroll_line = static_cast<std::uint8_t>(
+            std::min<int>(previous.scroll_line, max_scroll)
+        );
+        next.body_end_reached = previous.body_end_reached || next.body_end_reached;
+        if (previous.choice == ApprovalChoice::Accept && next.accept_offered) {
+            next.choice = ApprovalChoice::Accept;
+        } else if (previous.choice == ApprovalChoice::Decline && next.decline_offered) {
+            next.choice = ApprovalChoice::Decline;
+        }
+    }
     state.present_approval(next);
 }
 
@@ -277,6 +294,25 @@ DispatchAction DeviceLinkDispatcher::dispatch(
         state_.counters_.invalid_json++;
         return DispatchAction::None;
     }
+    const bool is_hello = std::strcmp(type, "hello") == 0;
+    if (is_hello) {
+        std::uint32_t protocol_version = 0;
+        const char* session = document["session"].as<const char*>();
+        const bool valid_protocol = sequence > 0 &&
+                                    read_uint32(document["proto"], protocol_version) &&
+                                    protocol_version == kDeviceLinkProtocolVersion &&
+                                    state_.begin_host_session(session);
+        state_.protocol_ok_ = valid_protocol;
+        if (!valid_protocol) {
+            state_.counters_.invalid_json++;
+            state_.link_state_ = LinkState::Stale;
+            state_.service_state_ = ServiceState::Down;
+            state_.dirty_ = true;
+            return DispatchAction::None;
+        }
+    } else if (state_.host_session_[0] == '\0' || !state_.protocol_ok_) {
+        return DispatchAction::None;
+    }
     if (state_.sequence_seen_ && sequence <= state_.last_sequence_) {
         state_.counters_.old_sequence++;
         return DispatchAction::None;
@@ -290,19 +326,6 @@ DispatchAction DeviceLinkDispatcher::dispatch(
     }
 
     state_.counters_.valid_lines++;
-    if (std::strcmp(type, "hello") == 0) {
-        std::uint32_t protocol_version = 0;
-        const bool valid_protocol = read_uint32(document["proto"], protocol_version) &&
-                                    protocol_version == kDeviceLinkProtocolVersion;
-        state_.protocol_ok_ = valid_protocol;
-        if (!valid_protocol) {
-            state_.link_state_ = LinkState::Stale;
-            state_.service_state_ = ServiceState::Down;
-            state_.dirty_ = true;
-            return DispatchAction::None;
-        }
-    }
-
     state_.note_receive(now_ms);
     if (std::strcmp(type, "state") == 0) {
         apply_state(document, state_);

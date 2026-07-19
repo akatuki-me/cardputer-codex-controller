@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TextIO
 
 from cardputer_codex_bridge.app_server.types import JsonObject, JsonValue
-from cardputer_codex_bridge.approval import PendingApproval, PendingQueue, device_decisions
+from cardputer_codex_bridge.approval import DeviceApproval, PendingQueue, device_decisions
 from cardputer_codex_bridge.controller.state import ControllerState
 
 
@@ -52,7 +52,7 @@ def run_demo(output: TextIO) -> None:
     state.turn_completed(0)
     _emit(output, "turn_completed", state.snapshot(seq=6))
 
-    approval = PendingApproval("approval-demo-001", "テスト用の安全な変更")
+    approval = DeviceApproval("approval-demo-001", "テスト用の安全な変更")
     pending.add(approval)
     _emit(
         output,
@@ -83,8 +83,8 @@ def run_demo(output: TextIO) -> None:
         },
     )
 
-    high_risk = PendingApproval("approval-high", "危険操作", risk_class="high")
-    incomplete = PendingApproval("approval-truncated", "切り詰め済み", content_complete=False)
+    high_risk = DeviceApproval("approval-high", "危険操作", risk_class="high")
+    incomplete = DeviceApproval("approval-truncated", "切り詰め済み", content_complete=False)
     _emit(output, "guard_high_risk", _guard_result(high_risk, seq=9))
     _emit(output, "guard_incomplete", _guard_result(incomplete, seq=10))
     _emit(
@@ -94,7 +94,7 @@ def run_demo(output: TextIO) -> None:
     )
 
 
-def _guard_result(approval: PendingApproval, *, seq: int) -> JsonObject:
+def _guard_result(approval: DeviceApproval, *, seq: int) -> JsonObject:
     decisions: list[JsonValue] = list(device_decisions(approval))
     return {
         "t": "approval",

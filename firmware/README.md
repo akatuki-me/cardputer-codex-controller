@@ -7,7 +7,7 @@ Cardputer-Adv向けdevice-link v1 firmwareです。PlatformIOとArduino framewor
 - 240×135の`SCR-HOME`、`SCR-RUN`、`SCR-APPROVE`
 - 6 slotのfull snapshotと単調増加`seq`
 - `hello`、`state`、`approval`、`approval_resolved`、`toast`、`ping`
-- 500msのBtnA長押しによるfocus中slotの`interrupt`
+- 500msのG0長押しによるfocus中slotの`interrupt`
 - host→device 4096 byte、device→host 1024 byteの固定上限
 - 最大host line 2本分を保持する8192 byteのUSB CDC RX queue
 - partial line、multiple line、invalid UTF-8、oversize line、未知`t`の安全な処理
@@ -15,6 +15,17 @@ Cardputer-Adv向けdevice-link v1 firmwareです。PlatformIOとArduino framewor
 - `contentComplete`、`riskClass`、300ms、本文末尾、ID一致によるaccept guard
 
 credential、prompt履歴、approval本文をNVSまたはmicroSDへ保存する処理はありません。
+
+## 物理操作
+
+- `1`〜`6`: focus slotを選択
+- `j` / `k`: approval本文を下 / 上へscroll
+- `0`: approvalをlocal holdし、requestを解決しない
+- `a` / `d`: accept / declineを選択
+- Enter: 選択したapproval responseを確定
+- G0を500ms長押し: focus中active turnをinterrupt
+
+EnterはM5Cardputerのprintable keyではなくspecial-key stateとして取得します。Production実機でhold、accept、decline、accept禁止、G0 interruptを受入済みです。
 
 ## Buildとfixture
 
@@ -44,7 +55,7 @@ python -m platformio run -d firmware -e cardputer_adv_bringup
 
 `state`、`approval`、`decision`、`interrupt`などのCodex commandは実装していません。4KiB echoはpayloadを返信せず、byte数とFNV-1a checksumだけを返します。接続ごとのopaqueなhost sessionが変わった場合だけhost側sequenceを初期化します。
 
-USB Serial/JTAGでflasher stub起動後の通信消失を避けるため、診断targetだけは`upload_speed = 115200`と`--no-stub`を固定し、ESP32-S3のROM loaderを使用します。この設定は診断imageの内容やproduction targetへ影響しません。
+USB Serial/JTAGでflasher stub起動後の通信消失を避けるため、productionと診断の両targetは`upload_speed = 115200`と`--no-stub`を継承し、ESP32-S3のROM loaderを使用します。この設定はimage内容には影響せず、upload時だけ適用されます。
 
 書き込みとCOM port openはbuildとは別のhardware gateです。対象deviceとcommandを提示し、人間の明示承認を得るまで実行しません。
 

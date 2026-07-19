@@ -99,15 +99,56 @@ cardputer-codex-controller bringup --port-handle local-private/device-port.txt -
 
 `--dry-run`を外す操作と診断firmwareの書き込みはhardware承認ゲートの対象です。実portでは物理入力を最大120秒待ちます。詳細な手順と検証済み範囲は[M1 bring-up](docs/m1/cardputer-bringup.md)を参照してください。
 
+## USB CDC E2E harness
+
+認証済みCodex app-server、host state reducer、合成USB CDCを1本につなぎ、Cardputerから届いた想定の`interrupt`がactive turnへ一度だけ転送されることを確認できます。
+
+```powershell
+cardputer-codex-controller e2e --synthetic
+```
+
+合成CDCはdevice `hello`、重複`interrupt`、host側のNDJSONをmemory内で往復させます。実portは開かず、出力にはthread ID、turn ID、prompt、model、pathを含めません。
+
+実portは`--port`またはGit管理外の1行fileを指す`--port-handle`で明示選択します。初回openの承認前は`--dry-run`を必ず付けます。dry-runは選択だけを検証し、serial I/OとCodexを起動しません。
+
+```powershell
+cardputer-codex-controller e2e --port-handle local-private/device-port.txt --dry-run
+```
+
+`--dry-run`を外す操作はhardware承認ゲートの対象です。実portを使ったE2Eは未検証であり、合成E2EのPASSを実機PASSとして扱いません。
+
+## Host controller runtime
+
+認証済みCodex app-serverと合成Cardputerを接続し、単一のcontroller-owned threadを対話操作できます。合成実行でもCodexは実接続です。
+
+```powershell
+cardputer-codex-controller control --synthetic --cwd . --label main
+```
+
+起動後は`run <text>`、`wait`、`pending`、`approve <id>`、`decline <id>`、`cancel <id>`、`interrupt`、`quit`を使用します。`wait`は完了時に`PASS`、未応答approval受信時に`BLOCKED pending_approval`、待機上限到達時に`TIMEOUT`を返してREPLへ戻り、controller sessionを終了しません。Threadは`ephemeral=true`、`sandbox=read-only`、`approvalPolicy=on-request`で作成されます。Hostはserverが提示したdecisionだけを送り、deviceへ表示できない追加文脈付きrequestはhost-onlyに留めます。
+
+実portの選択経路だけを確認する場合は、Git管理外のhandleと`--dry-run`を使用します。このcommandはserial I/OもCodexも開始しません。
+
+```powershell
+cardputer-codex-controller control --port-handle local-private/device-port.txt --cwd . --label main --dry-run
+```
+
+`--dry-run`を外すproduction controller接続はhardware承認ゲートの対象です。`quit`はapp-serverへstdin EOFを送り、最大60秒の有界待機後も正常終了しない場合は失敗として扱います。
+
 ## 状態
 
 - 公開開発基盤: 実装済み
 - M0 Host app-server transport・thread/turn操作: 実装済み
 - Host controller合成デモ: 実装済み
-- Cardputer-Adv production firmware MVP: build・native fixture実装済み（production imageは実機未検証）
+- Cardputer-Adv production firmware MVP: build・native fixture・実機書き込み・hash verificationをPASS
 - M1診断firmware・host bring-up harness: v0.1.3でrecovery-first、実機機能、device計測のstale 6秒以内をPASS
-- M0 approval・multi-client・ADR: 継続中
-- 実機書き込み: M1診断firmware v0.1.3を受入済み、production imageは未実施
+- 実Codex・合成USB CDC E2E: 実装済み
+- M2 host runtime・SCR-HOME/RUN・G0 interrupt・stale/reconnect: 実Codexとproduction実機で受入済み
+- M3 approval coordinator・host response surface・物理accept/decline/hold・accept禁止guard・複数pending: production実機で受入済み
+- 実USB CDC controller E2E: 実Codexとproduction実機で受入済み
+- 専用`e2e` commandの実port経路: 未検証（production受入は`control` commandで実施）
+- multi-client・ADR・M4 interaction・M6運用: 継続中
+- 実機書き込み: M1診断firmware v0.1.3とproduction imageを受入済み
 
 ## 免責
 

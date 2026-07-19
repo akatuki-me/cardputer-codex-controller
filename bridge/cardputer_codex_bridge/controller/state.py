@@ -70,10 +70,27 @@ class ControllerState:
         slot.attention_kind = "done"
 
     def interrupt_active(self, adapter: HostCommandAdapter) -> bool:
+        slot = self._slot(self._selected_index)
+        if slot.turn_id is None:
+            return False
+        return self.interrupt_claimed(
+            self._selected_index + 1,
+            slot.turn_id,
+            adapter,
+        )
+
+    def interrupt_claimed(
+        self,
+        slot_number: int,
+        turn_id: str,
+        adapter: HostCommandAdapter,
+    ) -> bool:
         if self.link_state is not LinkState.ACTIVE or self.service_state is not ServiceState.READY:
             return False
+        if slot_number != self._selected_index + 1:
+            return False
         slot = self._slot(self._selected_index)
-        if slot.thread_id is None or slot.turn_id is None:
+        if slot.thread_id is None or slot.turn_id != turn_id:
             return False
         key = (slot.thread_id, slot.turn_id)
         if key in self._interrupted_turns:
