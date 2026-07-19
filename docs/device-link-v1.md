@@ -2,7 +2,7 @@
 
 本書はM1〜M2で実測して確定するdraftです。
 
-Host bridge MVPはframing、方向別byte上限、単調増加`seq`、未知`t`と過去`seq`の安全無視を実装しています。合成デモだけを対象とし、実portでの検証は未実施です。
+Host bridge MVPはframing、方向別byte上限、単調増加`seq`、未知`t`と過去`seq`の安全無視を実装しています。`SerialLink`はprovider injection、read thread、heartbeat、stale判定、再接続時の`hello`とfull snapshot再送を実装しています。汎用serial transportはM1診断protocolで実portまで検証済みです。Productionのstate full snapshotとCodex app-serverを結ぶ実port E2Eは未実施です。
 
 ## Framing
 

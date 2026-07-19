@@ -1,3 +1,4 @@
+#include "bringup_protocol.h"
 #include "controller_state.h"
 #include "device_link.h"
 
@@ -11,6 +12,7 @@
 #include <vector>
 
 using namespace cardputer_codex;
+using namespace cardputer_bringup;
 
 namespace {
 
@@ -208,6 +210,118 @@ void test_resolved_requires_matching_id() {
     TEST_ASSERT_FALSE(state.approval().active);
 }
 
+void test_bringup_line_receiver_accepts_4096_and_rejects_4097_bytes() {
+    BringupLineReceiver receiver;
+    std::vector<std::string> lines;
+    std::string exact(kBringupHostLineMaxBytes, 'x');
+    exact.push_back('\n');
+    receiver.feed(
+        reinterpret_cast<const std::uint8_t*>(exact.data()),
+        exact.size(),
+        collect_line,
+        &lines
+    );
+
+    TEST_ASSERT_EQUAL_UINT32(1, lines.size());
+    TEST_ASSERT_EQUAL_UINT32(kBringupHostLineMaxBytes, lines[0].size());
+    TEST_ASSERT_EQUAL_UINT32(0, receiver.oversize_lines());
+
+    std::string oversize(kBringupHostLineMaxBytes + 1, 'y');
+    oversize.push_back('\n');
+    receiver.feed(
+        reinterpret_cast<const std::uint8_t*>(oversize.data()),
+        oversize.size(),
+        collect_line,
+        &lines
+    );
+
+    TEST_ASSERT_EQUAL_UINT32(1, lines.size());
+    TEST_ASSERT_EQUAL_UINT32(1, receiver.oversize_lines());
+    TEST_ASSERT_EQUAL_UINT32(0, receiver.buffered_bytes());
+}
+
+void test_usb_rx_buffers_cover_two_maximum_host_lines() {
+    TEST_ASSERT_EQUAL_UINT32(
+        kHostToDeviceMaxBytes * 2,
+        kDeviceLinkSerialRxBufferBytes
+    );
+    TEST_ASSERT_EQUAL_UINT32(
+        kBringupHostLineMaxBytes * 2,
+        kBringupSerialRxBufferBytes
+    );
+}
+
+void test_bringup_session_resets_sequence_only_for_a_new_session() {
+    HostSessionGate gate;
+
+    TEST_ASSERT_TRUE(gate.begin("session-a", 1));
+    TEST_ASSERT_TRUE(gate.accept(2));
+    TEST_ASSERT_FALSE(gate.accept(2));
+    TEST_ASSERT_FALSE(gate.begin("session-a", 1));
+    TEST_ASSERT_FALSE(gate.begin("session-b", 0));
+    TEST_ASSERT_EQUAL_STRING("session-a", gate.session());
+    TEST_ASSERT_TRUE(gate.begin("session-b", 1));
+    TEST_ASSERT_EQUAL_STRING("session-b", gate.session());
+    TEST_ASSERT_FALSE(gate.accept(1));
+    TEST_ASSERT_TRUE(gate.accept(2));
+}
+
+void test_bringup_checksum_is_fnv1a_32() {
+    TEST_ASSERT_EQUAL_HEX32(0x4F9F2CAB, fnv1a("hello", 5));
+}
+
+void test_bringup_stale_boundary_has_margin_below_six_seconds() {
+    TEST_ASSERT_TRUE(kBringupHostStaleAfterMs < 6000U);
+    TEST_ASSERT_FALSE(bringup_host_is_stale(kBringupHostStaleAfterMs - 1U, 0U));
+    TEST_ASSERT_TRUE(bringup_host_is_stale(kBringupHostStaleAfterMs, 0U));
+}
+
+void test_g0_tracker_distinguishes_499ms_short_and_500ms_long_once() {
+    G0Tracker tracker;
+
+    G0Event event = tracker.update(true, 100);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(G0Action::Press),
+        static_cast<std::uint8_t>(event.action)
+    );
+    event = tracker.update(true, 599);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(G0Action::None),
+        static_cast<std::uint8_t>(event.action)
+    );
+    event = tracker.update(false, 599);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(G0Action::Short),
+        static_cast<std::uint8_t>(event.action)
+    );
+    TEST_ASSERT_EQUAL_UINT32(499, event.held_ms);
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(G0Action::Press),
+        static_cast<std::uint8_t>(tracker.update(true, 1000).action)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(G0Action::None),
+        static_cast<std::uint8_t>(tracker.update(true, 1499).action)
+    );
+    event = tracker.update(true, 1500);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(G0Action::Long),
+        static_cast<std::uint8_t>(event.action)
+    );
+    TEST_ASSERT_EQUAL_UINT32(500, event.held_ms);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(G0Action::None),
+        static_cast<std::uint8_t>(tracker.update(true, 1600).action)
+    );
+    event = tracker.update(false, 1700);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(G0Action::Release),
+        static_cast<std::uint8_t>(event.action)
+    );
+    TEST_ASSERT_EQUAL_UINT32(700, event.held_ms);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -224,5 +338,11 @@ int main(int, char**) {
     RUN_TEST(test_accept_requires_guard_end_and_matching_id);
     RUN_TEST(test_high_risk_and_incomplete_never_offer_accept);
     RUN_TEST(test_resolved_requires_matching_id);
+    RUN_TEST(test_bringup_line_receiver_accepts_4096_and_rejects_4097_bytes);
+    RUN_TEST(test_usb_rx_buffers_cover_two_maximum_host_lines);
+    RUN_TEST(test_bringup_session_resets_sequence_only_for_a_new_session);
+    RUN_TEST(test_bringup_checksum_is_fnv1a_32);
+    RUN_TEST(test_bringup_stale_boundary_has_margin_below_six_seconds);
+    RUN_TEST(test_g0_tracker_distinguishes_499ms_short_and_500ms_long_once);
     return UNITY_END();
 }

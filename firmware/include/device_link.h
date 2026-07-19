@@ -9,6 +9,7 @@ namespace cardputer_codex {
 
 constexpr std::size_t kHostToDeviceMaxBytes = 4096;
 constexpr std::size_t kDeviceToHostMaxBytes = 1024;
+constexpr std::size_t kDeviceLinkSerialRxBufferBytes = kHostToDeviceMaxBytes * 2;
 constexpr std::uint32_t kDeviceLinkProtocolVersion = 1;
 
 using LineHandler = void (*)(const char* line, std::size_t length, void* context);

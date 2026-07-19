@@ -3,7 +3,7 @@
 M5Stack Cardputer-Advを、Codexの状態確認・選択・安全な承認・中断に使う物理コントローラーへする非公式のオープンソースプロジェクトです。
 
 > [!WARNING]
-> 現在は実装準備段階です。ファームウェアの書き込み手順はまだリリースされていません。
+> 現在は初期実装段階です。ファームウェアの書き込み手順はまだリリースされていません。
 
 ## 目標
 
@@ -47,6 +47,7 @@ python -m pytest
 python -m build
 python -m platformio test -d firmware -e native
 python -m platformio run -d firmware -e cardputer_adv
+python -m platformio run -d firmware -e cardputer_adv_bringup
 ```
 
 作業はIssueから開始し、1 Issue = 1 branch = 1 PRとします。詳しくは[CONTRIBUTING.md](CONTRIBUTING.md)を参照してください。
@@ -60,7 +61,7 @@ python -m pip install -e .
 cardputer-codex-controller demo
 ```
 
-このデモはdevice hello、6 slotのfull snapshot、turnの開始・実行・完了、interrupt、承認の保留とhost解決、安全guardを順に表示します。合成デモ出力中の`codexConnection`は`N/A`です。実Codex eventを同じstate reducerへ流す統合は後続Issueで行い、実portは開きません。
+このデモはdevice hello、6 slotのfull snapshot、turnの開始・実行・完了、interrupt、承認の保留とhost解決、安全guardを順に表示します。合成デモ出力中の`codexConnection`は`N/A`です。
 
 認証済みCodex CLIとの実接続は、次の1 commandで確認できます。一時workspace、ephemeral thread、`sandbox=read-only`、`approvalPolicy=never`を使い、ID、prompt、model名、pathは出力しません。
 
@@ -77,18 +78,36 @@ Cardputer-Adv向けfirmwareは、実機やserial portへ接続せずにbuildで�
 ```powershell
 python -m platformio test -d firmware -e native
 python -m platformio run -d firmware -e cardputer_adv
+python -m platformio run -d firmware -e cardputer_adv_bringup
 ```
 
-生成されるapplication imageは`firmware/.pio/build/cardputer_adv/firmware.bin`です。このrepositoryはbuildとnative fixtureだけを通常gateに含め、upload、flash read/write、port openを実行しません。
+production imageは`firmware/.pio/build/cardputer_adv/firmware.bin`、Codex commandを一切送らないM1診断imageは`firmware/.pio/build/cardputer_adv_bringup/firmware.bin`へ生成されます。このrepositoryはbuildとnative fixtureだけを通常gateに含め、upload、flash read/write、port openを実行しません。
+
+## M1 Cardputer-Adv bring-up
+
+実機やCodexへ接続せず、board handshake、4 KiB echo、RTT、throughput、heartbeat、数字key、G0短押し・長押しの診断経路を合成deviceで確認できます。
+
+```powershell
+cardputer-codex-controller bringup --synthetic
+```
+
+実portは`--port`または`--port-handle`で明示選択します。最初は必ず`--dry-run`を付け、portを開かず選択経路だけを確認します。
+
+```powershell
+cardputer-codex-controller bringup --port-handle local-private/device-port.txt --dry-run
+```
+
+`--dry-run`を外す操作と診断firmwareの書き込みはhardware承認ゲートの対象です。実portでは物理入力を最大120秒待ちます。詳細な手順と検証済み範囲は[M1 bring-up](docs/m1/cardputer-bringup.md)を参照してください。
 
 ## 状態
 
 - 公開開発基盤: 実装済み
 - M0 Host app-server transport・thread/turn操作: 実装済み
-- Host controller合成デモ: 実装済み（実Codex eventとのreducer統合は未実装）
-- Cardputer-Adv firmware MVP: build・native fixture実装済み（実機未検証）
+- Host controller合成デモ: 実装済み
+- Cardputer-Adv production firmware MVP: build・native fixture実装済み（production imageは実機未検証）
+- M1診断firmware・host bring-up harness: v0.1.3でrecovery-first、実機機能、device計測のstale 6秒以内をPASS
 - M0 approval・multi-client・ADR: 継続中
-- 実機書き込み: 未承認・未実施
+- 実機書き込み: M1診断firmware v0.1.3を受入済み、production imageは未実施
 
 ## 免責
 
