@@ -17,7 +17,6 @@ namespace {
 
 constexpr std::size_t kTxQueueDepth = 4;
 constexpr std::uint32_t kHelloRetryMs = 2000;
-constexpr std::uint32_t kRenderRefreshMs = 500;
 
 struct TxFrame {
     std::array<std::uint8_t, kDeviceToHostMaxBytes + 1> bytes = {};
@@ -122,7 +121,6 @@ DeviceLinkDispatcher dispatcher(controller);
 TxQueue tx_queue;
 std::uint32_t dispatch_now_ms = 0;
 std::uint32_t last_hello_ms = 0;
-std::uint32_t last_render_ms = 0;
 std::uint32_t button_down_ms = 0;
 bool interrupt_latched = false;
 
@@ -422,9 +420,8 @@ void loop() {
     }
     tx_queue.drain();
 
-    if (controller.dirty() || (now_ms - last_render_ms) >= kRenderRefreshMs) {
+    if (controller.dirty()) {
         render();
-        last_render_ms = now_ms;
     }
     delay(2);
 }
