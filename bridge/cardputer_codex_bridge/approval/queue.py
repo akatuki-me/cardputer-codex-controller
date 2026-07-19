@@ -9,13 +9,26 @@ class DeviceApproval:
     summary: str
     risk_class: str = "normal"
     content_complete: bool = True
+    slot: int = 1
+    kind: str = "command"
+    lines: tuple[str, ...] = ()
+    cwd: str = ""
+    decisions: tuple[str, ...] = ("accept", "decline")
+    sending: bool = False
 
 
 def device_decisions(approval: DeviceApproval) -> tuple[str, ...]:
     """一次防御をhostへ残し、危険・不完全な本文ではacceptを隠す。"""
+    if approval.sending:
+        return ()
+    normalized = tuple(
+        decision
+        for decision in approval.decisions
+        if decision in ("accept", "decline")
+    )
     if approval.risk_class != "normal" or not approval.content_complete:
-        return ("decline",)
-    return ("accept", "decline")
+        return tuple(decision for decision in normalized if decision != "accept")
+    return normalized
 
 
 class PendingQueue:

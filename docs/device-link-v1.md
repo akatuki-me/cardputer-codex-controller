@@ -42,6 +42,9 @@ JSON-RPCの`rpcRequestId`はhostだけが保持します。Deviceにはbridgeが
 - `contentComplete`
 - `riskClass`
 - `pendingCount`
+- `sending`
+
+同じ`deviceApprovalId`の再送は新規modalではなくidempotentなsnapshot更新として扱います。Firmwareは300ms guardの開始時刻、scroll位置、最下端到達、選択中decision、localの`sending`を維持し、本文、安全field、残件数を更新します。別IDへ進んだ場合だけ表示状態を初期化します。`sending=true`またはdecision空集合では応答keyを無効化します。
 
 ## Device to host
 

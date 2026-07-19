@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from cardputer_codex_bridge.app_server.types import JsonObject
+from cardputer_codex_bridge.approval import DeviceApproval
 from cardputer_codex_bridge.controller import (
     ControllerState,
     DeviceControllerSession,
@@ -78,6 +79,101 @@ def test_session_sends_hello_full_snapshot_and_forwards_interrupt_once() -> None
         assert state.link_state is LinkState.ACTIVE
         assert sum(message["t"] == "hello" for message in host_messages) == 1
         assert sum(message["t"] == "state" for message in host_messages) == 1
+    finally:
+        session.close()
+
+
+def test_session_routes_approval_messages_only_after_handshake() -> None:
+    provider = SyntheticSerialProvider()
+    decisions: list[tuple[str, str]] = []
+    ready_calls: list[bool] = []
+    session = DeviceControllerSession(
+        state=ControllerState(),
+        adapter=RecordingAdapter(),
+        provider=provider,
+        port="synthetic",
+        read_timeout=0.005,
+        ping_interval=1.0,
+        stale_after=3.0,
+        reconnect_delay=0.01,
+    )
+    session.configure_approval(
+        decision_handler=lambda approval_id, decision: (
+            decisions.append((approval_id, decision)) or True
+        ),
+        ready_handler=lambda: ready_calls.append(True),
+    )
+    approval = DeviceApproval(
+        approval_id="approval-000001",
+        summary="fixture",
+        slot=2,
+        kind="command",
+        lines=("tool --check fixture.txt",),
+        cwd="workspace/fixture",
+        decisions=("accept", "decline"),
+    )
+
+    assert session.send_approval(approval, pending_count=1) is False
+    session.start()
+    try:
+        provider.wait_for_port()
+        provider.inject(
+            {
+                "t": "decision",
+                "seq": 1,
+                "deviceApprovalId": approval.approval_id,
+                "decision": "accept",
+            }
+        )
+        time.sleep(0.03)
+        assert decisions == []
+
+        provider.inject({"t": "hello", "seq": 2, "proto": 1})
+        assert session.wait_for_device_hello(1.0)
+        assert ready_calls == [True]
+        assert session.send_approval(approval, pending_count=1) is True
+
+        provider.inject(
+            {
+                "t": "decision",
+                "seq": 3,
+                "deviceApprovalId": approval.approval_id,
+                "decision": "accept",
+            }
+        )
+        provider.inject(
+            {
+                "t": "decision",
+                "seq": 4,
+                "deviceApprovalId": approval.approval_id,
+                "decision": "unknown",
+            }
+        )
+        assert _wait_until(lambda: len(decisions) == 1, timeout=1.0)
+        assert decisions == [(approval.approval_id, "accept")]
+        assert session.send_approval_resolved(approval.approval_id, "accept") is True
+
+        messages = provider.decoded_host_messages()
+        approval_message = next(message for message in messages if message["t"] == "approval")
+        assert approval_message == {
+            "t": "approval",
+            "seq": 3,
+            "deviceApprovalId": approval.approval_id,
+            "slot": 2,
+            "kind": "command",
+            "lines": ["tool --check fixture.txt"],
+            "cwd": "workspace/fixture",
+            "decisions": ["accept", "decline"],
+            "contentComplete": True,
+            "riskClass": "normal",
+            "pendingCount": 1,
+            "sending": False,
+        }
+        resolved_message = next(
+            message for message in messages if message["t"] == "approval_resolved"
+        )
+        assert resolved_message["deviceApprovalId"] == approval.approval_id
+        assert resolved_message["decision"] == "accept"
     finally:
         session.close()
 

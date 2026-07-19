@@ -210,6 +210,59 @@ void test_high_risk_and_incomplete_never_offer_accept() {
     TEST_ASSERT_FALSE(incomplete.accept_allowed(1000, "cut"));
 }
 
+void test_same_approval_update_preserves_guard_scroll_choice_and_sending() {
+    ControllerState state;
+    DeviceLinkDispatcher dispatcher(state);
+    make_ready(state, dispatcher);
+    dispatch(
+        dispatcher,
+        R"({"t":"approval","seq":3,"deviceApprovalId":"approval-1","slot":1,"kind":"command","lines":["one","two","three","four"],"decisions":["accept","decline"],"contentComplete":true,"riskClass":"normal","pendingCount":0,"sending":false})",
+        1000
+    );
+    state.scroll_approval(1);
+    state.set_approval_choice(ApprovalChoice::Accept);
+
+    dispatch(
+        dispatcher,
+        R"({"t":"approval","seq":4,"deviceApprovalId":"approval-1","slot":1,"kind":"command","lines":["one","two","three","four"],"decisions":["accept","decline"],"contentComplete":true,"riskClass":"normal","pendingCount":2,"sending":false})",
+        1200
+    );
+
+    TEST_ASSERT_EQUAL_UINT32(1000, state.approval().shown_at_ms);
+    TEST_ASSERT_EQUAL_UINT8(1, state.approval().scroll_line);
+    TEST_ASSERT_EQUAL_UINT16(2, state.approval().pending_count);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(ApprovalChoice::Accept),
+        static_cast<std::uint8_t>(state.approval().choice)
+    );
+    TEST_ASSERT_TRUE(state.accept_allowed(1300, "approval-1"));
+
+    state.mark_approval_sending("approval-1");
+    dispatch(
+        dispatcher,
+        R"({"t":"approval","seq":5,"deviceApprovalId":"approval-1","slot":1,"kind":"command","lines":["one","two","three","four"],"decisions":["accept","decline"],"contentComplete":true,"riskClass":"normal","pendingCount":3,"sending":false})",
+        1400
+    );
+    TEST_ASSERT_TRUE(state.approval().sending);
+    TEST_ASSERT_FALSE(state.accept_allowed(2000, "approval-1"));
+}
+
+void test_approval_snapshot_restores_response_sent_state() {
+    ControllerState state;
+    DeviceLinkDispatcher dispatcher(state);
+    make_ready(state, dispatcher);
+    dispatch(
+        dispatcher,
+        R"({"t":"approval","seq":3,"deviceApprovalId":"approval-1","lines":["full"],"decisions":[],"contentComplete":true,"riskClass":"normal","pendingCount":0,"sending":true})",
+        100
+    );
+
+    TEST_ASSERT_TRUE(state.approval().active);
+    TEST_ASSERT_TRUE(state.approval().sending);
+    TEST_ASSERT_FALSE(state.approval().accept_offered);
+    TEST_ASSERT_FALSE(state.approval().decline_offered);
+}
+
 void test_resolved_requires_matching_id() {
     ControllerState state;
     DeviceLinkDispatcher dispatcher(state);
@@ -407,6 +460,8 @@ int main(int, char**) {
     RUN_TEST(test_ping_requests_pong);
     RUN_TEST(test_accept_requires_guard_end_and_matching_id);
     RUN_TEST(test_high_risk_and_incomplete_never_offer_accept);
+    RUN_TEST(test_same_approval_update_preserves_guard_scroll_choice_and_sending);
+    RUN_TEST(test_approval_snapshot_restores_response_sent_state);
     RUN_TEST(test_resolved_requires_matching_id);
     RUN_TEST(test_new_host_session_resets_sequence_and_stale_approval);
     RUN_TEST(test_bringup_line_receiver_accepts_4096_and_rejects_4097_bytes);

@@ -2,6 +2,7 @@
 
 - OpenAI Codex App Server documentation: https://learn.chatgpt.com/docs/app-server
 - OpenAI Codex repository: https://github.com/openai/codex
+- OpenAI Codex App Server 0.144.6 source: https://github.com/openai/codex/tree/rust-v0.144.6/codex-rs/app-server
 - M5Stack Cardputer-Adv documentation: https://docs.m5stack.com/en/core/Cardputer-Adv
 - M5Stack M5Cardputer library: https://github.com/m5stack/M5Cardputer
 - M5Stack M5Unified: https://github.com/m5stack/M5Unified

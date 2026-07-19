@@ -18,9 +18,13 @@
 
 Bridgeがdevice-linkの4096 byte上限に合わせて本文を切り詰めた場合、`contentComplete=false`を必ず設定し、pending正本には切り詰め前のpayloadを保持します。Deviceではacceptを消し、host側だけで全文確認後の応答を許可します。
 
+Serverが`availableDecisions`を提示した場合、deviceとhostの双方がその集合を上限とします。`decline`と`cancel`を相互変換せず、serverが提示した名前をそのままresponseへ使用します。Amendment、network context、file diffなどhost consoleが完全表示できないsemantic contextを含むrequestは、hostでもacceptを禁止します。Hostが原文全体を保持する単純commandの表示切り詰めやhigh-risk分類では、hostで全文を確認した明示操作に限りacceptできます。
+
 ## Link and service guards
 
 stale linkではすべての送信をlockします。Codex serviceがreadyでない場合も応答、steer、interruptを送信しません。
+
+Controller終了時はactive turnの完了またはinterrupt完了を先に確定し、app-serverのstdin EOF後に最大60秒のgraceful shutdownを待ちます。強制killまたは非0終了は失敗として記録します。
 
 ## Hardware gate
 

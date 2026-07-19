@@ -25,6 +25,12 @@
 - snapshotとheartbeatの並行送信でも採番順とwrite順を一致させる
 - `interrupt`のslotと`turnId`がfocus中のactive turnへ完全一致しない場合は転送しない
 - Codex CLI 0.144.5とschema照合済み0.144.6だけをinitializeで受け入れる
+- approval requestを短いdevice IDへ投影し、JSON-RPC IDをdeviceへ送らない
+- server提示decision、内容完全性、high-risk分類の積集合だけをdeviceへ表示する
+- 追加semantic context付きrequestではhost acceptも禁止し、`decline`と`cancel`を変換しない
+- hostとdeviceのどちらから応答してもresolvedまでpendingを維持する
+- 同じapproval IDの残件数更新と再接続でguard、scroll、sendingを失わない
+- controller runtimeがturn、pending、host response、interrupt、正常終了を一つのthreadで処理する
 
 ## Protocol fixtures
 
@@ -41,6 +47,14 @@ Cardputer-Adv実機では診断firmware v0.1.3を用い、recovery-first復元�
 `cardputer-codex-controller e2e --synthetic`は認証済みCodexと合成USB CDCを接続します。出力はstep名とPASS/FAIL classだけに限定し、ID、prompt、model、path、portを含めません。
 
 `e2e --port`または`e2e --port-handle`で実portを選択できますが、承認前は`--dry-run`だけを実行します。dry-runはserial I/OとCodexを起動しません。実port未使用の結果はhardware PASSへ昇格しません。
+
+## M2/M3 local controller acceptance
+
+`cardputer-codex-controller control --synthetic --cwd . --label fixture`は実Codex app-serverとmemory内の合成Cardputerを接続します。2026-07-19のlocal acceptanceではCodex CLI 0.144.6を使い、thread作成、turn開始・完了、full state、wait、stdin EOF後の正常終了をPASSしました。
+
+実command approvalでは`availableDecisions`と追加amendment contextを受信し、deviceへ不完全なaccept UIを出さずhost-onlyとしました。Server提示の`cancel`で応答し、`serverRequest/resolved`、turn完了、書き込み未発生、終了コード0を確認します。出力証拠はID、command、cwd、prompt、model、portを含まない固定fieldだけに限定します。
+
+App-server終了は処理中RPCとthread cleanupをdrainするため、controllerは終了時だけ最大60秒を待ちます。60秒後の強制kill、非0終了、event reader残留はFAILです。
 
 ## Hardware tests
 

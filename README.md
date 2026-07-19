@@ -117,6 +117,24 @@ cardputer-codex-controller e2e --port-handle local-private/device-port.txt --dry
 
 `--dry-run`を外す操作はhardware承認ゲートの対象です。実portを使ったE2Eは未検証であり、合成E2EのPASSを実機PASSとして扱いません。
 
+## Host controller runtime
+
+認証済みCodex app-serverと合成Cardputerを接続し、単一のcontroller-owned threadを対話操作できます。合成実行でもCodexは実接続です。
+
+```powershell
+cardputer-codex-controller control --synthetic --cwd . --label main
+```
+
+起動後は`run <text>`、`wait`、`pending`、`approve <id>`、`decline <id>`、`cancel <id>`、`interrupt`、`quit`を使用します。Threadは`ephemeral=true`、`sandbox=read-only`、`approvalPolicy=on-request`で作成されます。Hostはserverが提示したdecisionだけを送り、deviceへ表示できない追加文脈付きrequestはhost-onlyに留めます。
+
+実portの選択経路だけを確認する場合は、Git管理外のhandleと`--dry-run`を使用します。このcommandはserial I/OもCodexも開始しません。
+
+```powershell
+cardputer-codex-controller control --port-handle local-private/device-port.txt --cwd . --label main --dry-run
+```
+
+`--dry-run`を外すproduction controller接続はhardware承認ゲートの対象です。`quit`はapp-serverへstdin EOFを送り、最大60秒の有界待機後も正常終了しない場合は失敗として扱います。
+
 ## 状態
 
 - 公開開発基盤: 実装済み
@@ -125,8 +143,11 @@ cardputer-codex-controller e2e --port-handle local-private/device-port.txt --dry
 - Cardputer-Adv production firmware MVP: build・native fixture実装済み（production imageは実機未検証）
 - M1診断firmware・host bring-up harness: v0.1.3でrecovery-first、実機機能、device計測のstale 6秒以内をPASS
 - 実Codex・合成USB CDC E2E: 実装済み
+- M2 host runtime・合成SCR-HOME/RUN: 実装・実Codex受入済み
+- M3 approval coordinator・host response surface: 実装・実Codex受入済み
 - 実USB CDC E2E: 未検証
-- M0 approval・multi-client・ADR: 継続中
+- production firmwareによるM2/M3実機画面・物理key E2E: 未検証
+- multi-client・ADR・M4 interaction・M6運用: 継続中
 - 実機書き込み: M1診断firmware v0.1.3を受入済み、production imageは未実施
 
 ## 免責

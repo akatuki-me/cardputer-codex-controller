@@ -122,8 +122,11 @@ void apply_approval(JsonDocument& document, ControllerState& state, std::uint32_
         return;
     }
 
+    const ApprovalState previous = state.approval();
+    const bool updates_current = previous.active && std::strcmp(previous.id, id) == 0;
     ApprovalState next = {};
     next.active = true;
+    next.sending = document["sending"].is<bool>() && document["sending"].as<bool>();
     const int requested_slot = document["slot"] | 0;
     next.slot = static_cast<std::uint8_t>(
         std::max(0, std::min(requested_slot, static_cast<int>(kSlotCount)))
@@ -158,6 +161,20 @@ void apply_approval(JsonDocument& document, ControllerState& state, std::uint32_
         ++next.line_count;
     }
     next.body_end_reached = next.line_count <= kApprovalVisibleLines;
+    if (updates_current) {
+        next.sending = next.sending || previous.sending;
+        next.shown_at_ms = previous.shown_at_ms;
+        const int max_scroll = std::max<int>(0, next.line_count - kApprovalVisibleLines);
+        next.scroll_line = static_cast<std::uint8_t>(
+            std::min<int>(previous.scroll_line, max_scroll)
+        );
+        next.body_end_reached = previous.body_end_reached || next.body_end_reached;
+        if (previous.choice == ApprovalChoice::Accept && next.accept_offered) {
+            next.choice = ApprovalChoice::Accept;
+        } else if (previous.choice == ApprovalChoice::Decline && next.decline_offered) {
+            next.choice = ApprovalChoice::Decline;
+        }
+    }
     state.present_approval(next);
 }
 

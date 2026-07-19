@@ -1,9 +1,16 @@
+from .console import HostApprovalConsole
 from .contract import (
     COMMAND_APPROVAL_METHOD,
     FILE_CHANGE_APPROVAL_METHOD,
     SERVER_REQUEST_RESOLVED_METHOD,
     ApprovalContract,
     ApprovalEvent,
+)
+from .coordinator import (
+    ApprovalCoordinator,
+    DeviceDecision,
+    HostDecision,
+    HostPendingView,
 )
 from .errors import (
     ApprovalDecisionError,
@@ -33,6 +40,7 @@ __all__ = [
     "AcceptWithExecpolicyAmendment",
     "ApplyNetworkPolicyAmendment",
     "ApprovalContract",
+    "ApprovalCoordinator",
     "ApprovalDecisionError",
     "ApprovalError",
     "ApprovalEvent",
@@ -45,8 +53,12 @@ __all__ = [
     "CommandApprovalDecision",
     "CommandApprovalRequest",
     "DeviceApproval",
+    "DeviceDecision",
     "FileChangeApprovalDecision",
     "FileChangeApprovalRequest",
+    "HostPendingView",
+    "HostDecision",
+    "HostApprovalConsole",
     "PendingApproval",
     "PendingQueue",
     "device_decisions",
