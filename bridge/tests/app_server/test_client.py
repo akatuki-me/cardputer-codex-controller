@@ -76,6 +76,19 @@ def test_initialize_accepts_schema_verified_patch_version() -> None:
     assert shutdown.exit_code == 0
 
 
+def test_initialize_can_opt_into_experimental_server_requests() -> None:
+    client = _client("experimental-capability")
+    client.start()
+    try:
+        result = client.initialize(CLIENT_INFO, experimental_api=True)
+        assert result.codex_version == "0.144.5"
+    finally:
+        shutdown = client.close()
+
+    assert shutdown.forced is False
+    assert shutdown.exit_code == 0
+
+
 def test_close_closes_child_stdio_streams() -> None:
     client = _client("normal")
     client.start()

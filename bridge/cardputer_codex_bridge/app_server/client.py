@@ -248,11 +248,26 @@ class AppServerClient:
         self._stdout_thread.start()
         self._stderr_thread.start()
 
-    def initialize(self, client_info: ClientInfo) -> InitializeResult:
+    def initialize(
+        self,
+        client_info: ClientInfo,
+        *,
+        experimental_api: bool = False,
+    ) -> InitializeResult:
+        if not isinstance(experimental_api, bool):
+            raise ValueError("experimental_api must be a boolean")
         with self._lifecycle_lock:
-            return self._initialize_locked(client_info)
+            return self._initialize_locked(
+                client_info,
+                experimental_api=experimental_api,
+            )
 
-    def _initialize_locked(self, client_info: ClientInfo) -> InitializeResult:
+    def _initialize_locked(
+        self,
+        client_info: ClientInfo,
+        *,
+        experimental_api: bool,
+    ) -> InitializeResult:
         with self._state_lock:
             self._raise_fatal_locked()
             if self._state is not AppServerState.RUNNING:
@@ -261,7 +276,7 @@ class AppServerClient:
 
         params: JsonObject = {
             "clientInfo": client_info.as_json(),
-            "capabilities": {"experimentalApi": False},
+            "capabilities": {"experimentalApi": experimental_api},
         }
         try:
             value = self._send_request(
@@ -308,6 +323,21 @@ class AppServerClient:
             raise ValueError("request_id must be an integer or string")
         self._require_state((AppServerState.READY,))
         self._write_message({"id": request_id, "result": result})
+
+    def reject_request(self, request_id: RequestId) -> None:
+        """未対応server requestをpayload非表示の固定errorで拒否する。"""
+        if not isinstance(request_id, (int, str)) or isinstance(request_id, bool):
+            raise ValueError("request_id must be an integer or string")
+        self._require_state((AppServerState.READY,))
+        self._write_message(
+            {
+                "id": request_id,
+                "error": {
+                    "code": -32601,
+                    "message": "unsupported server request",
+                },
+            }
+        )
 
     def next_message(self, *, timeout: float | None = None) -> JsonObject:
         with self._state_lock:

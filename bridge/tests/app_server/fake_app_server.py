@@ -209,6 +209,15 @@ def main() -> int:
 
     if request.get("method") != "initialize":
         return 11
+    if mode == "experimental-capability":
+        params = request.get("params")
+        if not isinstance(params, dict):
+            return 15
+        capabilities = params.get("capabilities")
+        if not isinstance(capabilities, dict):
+            return 16
+        if capabilities.get("experimentalApi") is not True:
+            return 17
     if mode == "environment" and any(
         os.environ.get(name)
         for name in (

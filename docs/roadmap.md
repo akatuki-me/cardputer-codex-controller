@@ -26,7 +26,9 @@ app-server eventからhost state、device-link、実機SCR-HOMEまでの縦串�
 
 ## M4 Interaction
 
-選択肢回答、定型返信、steer、model別effort、残画面を追加します。自由文入力は初期版へ含めません。
+選択肢回答、定型返信、steer、model別effort、残画面を追加します。Cardputer上の自由文入力は初期版へ含めません。
+
+状態: host `answer`の最小面として単一・非secret質問を合成E2Eで完了。複数質問とsecretのno-echo入力はIssue #21、device選択肢、定型返信、steer、effort、残画面は後続で継続。
 
 ## M6 Operational v1.0
 

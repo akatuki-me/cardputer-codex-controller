@@ -81,3 +81,5 @@ CIでは合成app-server processを使い、次を認証済みCodexから独立�
 
 thread、turn、modelの実測結果は`app-server-operations.md`へ分離した。上記はPASSとして
 扱わず、後続のM0 Issueで個別に実測する。
+
+この文書はM0基礎transportの実測記録であり、clientの既定値は現在も`false`である。後続のhost controllerだけは、M4 `requestUserInput`を受信するため呼出時に`experimentalApi=true`へ明示opt-inする。

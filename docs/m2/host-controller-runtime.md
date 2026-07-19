@@ -12,8 +12,8 @@
 - app-server event threadとserial threadが共有するcontroller stateを単一同期境界で更新
 - focus中active turnだけを`turn/interrupt`へ転送
 - device `hello`後にhost `hello`とfull snapshotを送信し、再接続で再発行
-- host consoleから`run`、`wait`、`pending`、approval応答、`interrupt`、`quit`を操作
-- `wait`はpending approvalまたは待機上限でREPLへ戻り、controller sessionを維持
+- host consoleから`run`、`wait`、`pending`、approval応答、単一・非secret質問への`answer`、`interrupt`、`quit`を操作
+- `wait`はpending approval、pending question、または待機上限でREPLへ戻り、controller sessionを維持
 - stdin EOFによるapp-server正常終了を最大60秒の有界待機で確認
 
 ## 合成受入
@@ -29,6 +29,8 @@ Codex CLI 0.144.6とのlocal acceptanceで、initialize、thread start、device 
 Production firmwareと実Codex CLI 0.144.6を接続し、`CODEX HOME`と緑色`UP`、turn開始時のRUN、完了後の状態反映、G0長押しによる`turn/interrupt`を確認しました。Controller終了後は6秒以内にlink staleとなり、再起動後はnew host sessionのhandshakeとfull snapshotでHOMEへ復帰しました。Stale状態からのhost接続開始〜active/full snapshotは1,766msで、6秒基準をPASSしました。
 
 実測中に、長いturnまたはapproval待ちで`wait`がREPLを占有しcontroller全体をtimeout終了させる問題を検出しました。Pending受信時は`BLOCKED pending_approval`、待機上限時は`TIMEOUT`でREPLへ戻す回帰テストを追加し、実Codexのhost cancel、resolved、turn completionで修正を確認しています。
+
+M4のhost `answer`最小面は合成app-serverで検証しています。`item/tool/requestUserInput`を受信するとDeviceへ本文を送らず`attentionKind=question`だけを反映し、host回答、matching resolved、turn完了までを通します。実Codexでの`requestUserInput`発生を含むlocal acceptanceは未実施です。
 
 ## 未検証境界
 

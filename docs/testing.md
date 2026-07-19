@@ -31,6 +31,12 @@
 - hostとdeviceのどちらから応答してもresolvedまでpendingを維持する
 - 同じapproval IDの残件数更新と再接続でguard、scroll、sendingを失わない
 - controller runtimeがturn、pending、host response、interrupt、正常終了を一つのthreadで処理する
+- `requestUserInput`を短いhost IDへ投影し、生のRPC・question IDを表示しない
+- 単一・非secret回答だけをschemaどおりのnested mapへ変換し、回答本文をlog・deviceへ送らない
+- 複数質問、secret、空・4 KiB超、未知ID、二重・解決後回答を拒否する
+- question受信、host回答、matching resolved、turn完了を合成app-server E2Eで通す
+- approvalとquestionの同時pendingでapprovalを優先し、各resolvedを正しいqueueへ相関してquestion表示へ復帰する
+- experimentalな未知server requestを黙ってdropせず、固定のJSON-RPC `-32601` errorでrequestをfail closedする
 
 ## Protocol fixtures
 
@@ -55,6 +61,8 @@ Cardputer-Adv実機では診断firmware v0.1.3を用い、recovery-first復元�
 実command approvalでは`availableDecisions`と追加amendment contextを受信し、deviceへ不完全なaccept UIを出さずhost-onlyとしました。Server提示の`cancel`で応答し、`serverRequest/resolved`、turn完了、書き込み未発生、終了コード0を確認します。出力証拠はID、command、cwd、prompt、model、portを含まない固定fieldだけに限定します。
 
 App-server終了は処理中RPCとthread cleanupをdrainするため、controllerは終了時だけ最大60秒を待ちます。60秒後の強制kill、非0終了、event reader残留はFAILです。
+
+M4 host `answer`はCodex CLI 0.144.6生成schemaと合成app-serverで検証します。Controllerだけが`experimentalApi=true`へopt-inし、単一・非secret質問のresponse shape、pending lifecycle、Deviceへの`question` attentionだけを受入対象にします。複数/secret質問と実Codex発生経路は未検証であり、PASSへ昇格しません。
 
 Production実機のlocal acceptanceでは、実Codex turnのHOME/RUN、G0 interrupt、host-only cancel、incomplete file approvalのhold・accept禁止・物理decline、stale/reconnectを確認します。完全なlow-risk acceptと複数pendingは、実行処理を持たない2件のlocal fixtureで物理accept、残数、自動送り、物理decline、pending zeroを確認します。Stale状態からのhost接続開始〜active/full snapshotは6秒以内を合格とし、今回のbaselineは1,766msです。実測中に検出したEnter special-key判定と`wait`のapproval/timeout復帰には回帰テストがあります。
 
