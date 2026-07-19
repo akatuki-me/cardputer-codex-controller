@@ -24,6 +24,7 @@ def test_synthetic_bringup_exercises_the_m1_acceptance_path() -> None:
         provider=provider,
         synthetic_device=provider,
         step_timeout=2.0,
+        input_timeout=2.0,
     )
 
     result = output.getvalue()

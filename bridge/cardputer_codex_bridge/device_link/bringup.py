@@ -394,6 +394,7 @@ def run_bringup(
     provider: SerialProvider,
     synthetic_device: SyntheticSerialProvider | None = None,
     step_timeout: float = 30.0,
+    input_timeout: float = 120.0,
 ) -> None:
     stop = threading.Event()
     driver_errors: list[type[BaseException]] = []
@@ -446,13 +447,13 @@ def run_bringup(
             )
             output.write("input_test waiting: digit, G0 tap, G0 hold\n")
             output.flush()
-        if not session.wait_digit(step_timeout):
+        if not session.wait_digit(input_timeout):
             raise TimeoutError("bringup digit key was not observed")
         _pass(output, "keyboard_digit")
-        if not session.wait_g0_short(step_timeout):
+        if not session.wait_g0_short(input_timeout):
             raise TimeoutError("bringup G0 short press was not observed")
         _pass(output, "g0_short")
-        if not session.wait_g0_long(step_timeout):
+        if not session.wait_g0_long(input_timeout):
             raise TimeoutError("bringup G0 long press was not observed")
         _pass(output, "g0_long")
     finally:

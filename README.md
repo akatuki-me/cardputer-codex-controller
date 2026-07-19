@@ -97,7 +97,7 @@ cardputer-codex-controller bringup --synthetic
 cardputer-codex-controller bringup --port-handle local-private/device-port.txt --dry-run
 ```
 
-`--dry-run`を外す操作と診断firmwareの書き込みはhardware承認ゲートの対象です。詳細な手順と検証済み範囲は[M1 bring-up](docs/m1/cardputer-bringup.md)を参照してください。
+`--dry-run`を外す操作と診断firmwareの書き込みはhardware承認ゲートの対象です。実portでは物理入力を最大120秒待ちます。詳細な手順と検証済み範囲は[M1 bring-up](docs/m1/cardputer-bringup.md)を参照してください。
 
 ## USB CDC E2E harness
 
@@ -123,11 +123,11 @@ cardputer-codex-controller e2e --port-handle local-private/device-port.txt --dry
 - M0 Host app-server transport・thread/turn操作: 実装済み
 - Host controller合成デモ: 実装済み
 - 実Codex・合成USB CDC E2E: 実装済み
-- Cardputer-Adv firmware MVP: build・native fixture実装済み（実機未検証）
-- M1診断firmware・host bring-up harness: build・合成fixture実装済み（実機未検証）
+- Cardputer-Adv production firmware MVP: build・native fixture実装済み（production imageは実機未検証）
+- M1診断firmware・host bring-up harness: Cardputer-Adv実機でPASS
 - 実USB CDC E2E: 未検証
 - M0 approval・multi-client・ADR: 継続中
-- 実機書き込み: 未承認・未実施
+- 実機書き込み: M1診断firmware v0.1.1を検証済み、production imageは未実施
 
 ## 免責
 

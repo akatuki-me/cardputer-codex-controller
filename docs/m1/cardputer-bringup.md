@@ -6,7 +6,9 @@
 
 hardware read-only preflight: PASS
 
-hardware write・input gate: 未実施
+hardware bring-up gate: PASS
+
+factory復元・production controller gate: 未実施
 
 ## 目的
 
@@ -58,18 +60,22 @@ Host側の合成診断は次のcommandで実行できます。出力はstep名�
 cardputer-codex-controller bringup --synthetic
 ```
 
-throughputは512 byteのechoを8回直列送受信し、合計byte数と経過時間から算出します。現時点では実機の基準値がないため性能閾値を設けず、測定経路が成立することだけを非侵襲gateにします。実portでは`echo_4096_elapsed_ms`、`rtt_ms`、`throughput_bytes_per_second`、`heap_bytes`を単位付きで出力し、port、session、payload、key codeは出力しません。実測値と判定閾値はhardware gateの証拠として別途確定します。
+throughputは512 byteのechoを8回直列送受信し、合計byte数と経過時間から算出します。実portでは`echo_4096_elapsed_ms`、`rtt_ms`、`throughput_bytes_per_second`、`heap_bytes`を単位付きで出力し、port、session、payload、key codeは出力しません。性能の合否閾値はまだ設けず、値が正で測定経路が成立することを受入条件とします。物理入力は各eventを最大120秒待ちます。
 
-## Hardware gate
+## Hardware gate結果
 
-次は未実施です。build成功からhardware PASSへは昇格しません。
+- diagnostic firmware v0.1.1: ROM loader経由の書き込みと各image hash検証をPASS
+- USB CDC: port open、hello、ready、small echo、4,096 byte line、heartbeatをPASS
+- Cardputer-Adv判定: PASS
+- 再接続: 複数回のport再openと新host sessionでPASS
+- stale: host close後の`LINK WAIT/STALE`表示を実機で確認
+- keyboard: 数字keyをPASS
+- G0: shortと500ms以上のlongをPASS
+- 4,096 byte echo: 63 ms
+- RTT: 62 ms
+- throughput: 8,192 bytes/second
+- free heap: 346,756 bytes
 
-1. `upload_speed = 115200`と`--no-stub`を固定したdiagnostic firmwareの書き込み
-2. 最初のCOM port open
-3. board IDがCardputer-Advを示すこと
-4. device hello → host hello → ready
-5. 双方向echo、heartbeat、stale、再接続
-6. 数字keyとG0の短押し・長押し
-7. 4KiB line、RTT、throughput、heapの実測
+値は初回baselineであり、性能保証値ではありません。firmware既定の256 byte USB CDC RX queueでは4 KiB lineが欠落したため、productionとdiagnosticの双方を最大line 2本分の8,192 byteへ拡張して再試験しました。
 
-書き込みとport openは対象とcommandを提示し、人間の明示承認後にだけ実行します。port番号、serial number、device path、生logは公開証拠へ含めません。
+書き込みとport openは対象とcommandを提示し、人間の明示承認後に実行しました。port番号、serial number、device path、生logは公開証拠へ含めていません。factory imageの復元試験、production controller image、実CodexとのE2EはこのPASSに含みません。

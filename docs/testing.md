@@ -33,6 +33,8 @@ fixtureは合成ID、相対path、架空workspace名だけを使用します。�
 
 `cardputer-codex-controller bringup --synthetic`はCodex非依存のM1診断経路を合成deviceで実行します。`bringup --port ... --dry-run`はproviderを生成せず、portを開きません。合成結果は診断protocolとhost harnessの証拠であり、board、keyboard、G0、USB CDCの実機PASSには昇格しません。
 
+Cardputer-Adv実機では診断firmware v0.1.1を用い、board、4 KiB echo、RTT、throughput、heap、stale、再接続、数字key、G0 short/longを受入済みです。実portの物理入力待ちは各event最大120秒です。この結果はfactory復元やproduction controller、実Codex E2Eへ自動的に昇格しません。
+
 ## Hardware tests
 
 - M1: backup、restore、echo、RTT、4KB line、heap
