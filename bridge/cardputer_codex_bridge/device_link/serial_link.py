@@ -32,6 +32,10 @@ class SerialProvider(Protocol):
     ) -> SerialPort: ...
 
 
+class MessageDecoder(Protocol):
+    def feed(self, chunk: bytes) -> list[JsonObject]: ...
+
+
 class PySerialProvider:
     """DTR/RTSを個別操作せず、hardware flow controlを無効化して開く。"""
 
@@ -66,7 +70,9 @@ class SerialLink:
         on_message: Callable[[JsonObject], None],
         on_connected: Callable[[], None],
         on_stale: Callable[[], None],
-        ping_factory: Callable[[], JsonObject],
+        ping_factory: Callable[[], JsonObject | None],
+        decoder_factory: Callable[[], MessageDecoder] = DeviceLinkDecoder,
+        encoder: Callable[[JsonObject], bytes] = encode_message,
         baudrate: int = 115_200,
         read_timeout: float = 0.1,
         ping_interval: float = 2.0,
@@ -85,6 +91,8 @@ class SerialLink:
         self._on_connected = on_connected
         self._on_stale = on_stale
         self._ping_factory = ping_factory
+        self._decoder_factory = decoder_factory
+        self._encoder = encoder
         self._baudrate = baudrate
         self._read_timeout = read_timeout
         self._ping_interval = ping_interval
@@ -121,7 +129,7 @@ class SerialLink:
         return self._active.wait(timeout)
 
     def send(self, message: JsonObject) -> bool:
-        payload = encode_message(message)
+        payload = self._encoder(message)
         with self._write_lock, self._connection_lock:
             connection = self._connection
             if connection is None or not self._active.is_set():
@@ -155,7 +163,7 @@ class SerialLink:
                     baudrate=self._baudrate,
                     read_timeout=self._read_timeout,
                 )
-                decoder = DeviceLinkDecoder()
+                decoder = self._decoder_factory()
                 with self._connection_lock:
                     self._connection = connection
                     self._active.set()
@@ -172,7 +180,8 @@ class SerialLink:
                         for message in decoder.feed(chunk):
                             self._on_message(message)
                     if now >= next_ping:
-                        if not self.send(self._ping_factory()):
+                        ping = self._ping_factory()
+                        if ping is not None and not self.send(ping):
                             raise OSError("serial link became unavailable")
                         next_ping = now + self._ping_interval
                     if now - last_received >= self._stale_after:

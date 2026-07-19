@@ -124,3 +124,62 @@ def test_e2e_failure_is_sanitized(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "e2e FAIL RuntimeError\n"
+
+
+def test_bringup_dry_run_does_not_open_serial_or_call_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "PySerialProvider",
+        lambda: pytest.fail("dry-run created a serial provider"),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "run_bringup",
+        lambda *args, **kwargs: pytest.fail("dry-run called the bring-up runner"),
+    )
+
+    assert main(["bringup", "--port", "sensitive-port", "--dry-run"]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "serial_io_opened false\n" in captured.out
+    assert "codex_connection N/A\n" in captured.out
+    assert "sensitive-port" not in captured.out
+
+
+def test_bringup_cli_routes_synthetic_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    observed: dict[str, object] = {}
+
+    def synthetic_pass(output: object, **kwargs: object) -> None:
+        observed.update(kwargs)
+        output.write("bringup PASS\n")
+
+    monkeypatch.setattr(cli_module, "run_bringup", synthetic_pass)
+
+    assert main(["bringup", "--synthetic"]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == "bringup PASS\n"
+    assert observed["port"] == "synthetic"
+    assert observed["provider"] is observed["synthetic_device"]
+
+
+def test_bringup_failure_is_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise RuntimeError("sensitive diagnostic value")
+
+    monkeypatch.setattr(cli_module, "run_bringup", fail)
+
+    assert main(["bringup", "--synthetic"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "bringup FAIL RuntimeError\n"

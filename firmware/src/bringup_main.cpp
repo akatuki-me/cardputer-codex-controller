@@ -258,27 +258,29 @@ void render() {
     display.setTextColor(TFT_WHITE, TFT_BLACK);
     display.setTextSize(1);
     display.setCursor(4, 5);
-    display.print("M1 BRINGUP - NO CODEX COMMANDS");
+    display.printf("M1 BRINGUP %s", M1_BRINGUP_FIRMWARE_VERSION);
+    display.setCursor(4, 16);
+    display.print("NO CODEX COMMANDS");
 
     const int board = static_cast<int>(M5.getBoard());
     const bool board_ok = M5.getBoard() == m5::board_t::board_M5CardputerADV;
-    display.setCursor(4, 25);
+    display.setCursor(4, 32);
     display.setTextColor(board_ok ? TFT_GREEN : TFT_RED, TFT_BLACK);
     display.printf("BOARD %d  ADV %s", board, board_ok ? "PASS" : "FAIL");
 
-    display.setCursor(4, 45);
+    display.setCursor(4, 49);
     display.setTextColor(linked ? TFT_GREEN : TFT_ORANGE, TFT_BLACK);
     display.printf("LINK %s", linked ? "ACTIVE" : "WAIT/STALE");
 
-    display.setCursor(4, 65);
+    display.setCursor(4, 66);
     display.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
     display.printf("KEY %c  G0 %s", last_key, g0_tracker.pressed() ? "DOWN" : "UP");
-    display.setCursor(4, 85);
+    display.setCursor(4, 83);
     display.printf("RX %lu  TX %lu  ERR %lu", static_cast<unsigned long>(rx_messages),
                    static_cast<unsigned long>(tx_messages), static_cast<unsigned long>(errors));
-    display.setCursor(4, 105);
+    display.setCursor(4, 100);
     display.printf("HEAP %lu", static_cast<unsigned long>(ESP.getFreeHeap()));
-    display.setCursor(4, 122);
+    display.setCursor(4, 118);
     display.print("Type digits; tap/hold G0");
     screen_dirty = false;
 }

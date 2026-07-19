@@ -33,16 +33,27 @@ Hostはserial openごとに新しいsessionと送信`seq=1`を作ります。Fir
 ## 非侵襲gate結果
 
 - native fixture: 13 passed、0 failed
+- host bring-up fixture: firmware version、board、handshake、4 KiB echo、RTT、throughput、heartbeat、keyboard、G0をPASS
+- host reconnect fixture: 接続ごとのsession更新、送信`seq=1`へのreset、継続するdevice sequenceの受理をPASS
+- host dry-run fixture: providerを生成せず、serial I/OとCodex接続を行わないことをPASS
 - 4,096 byte line: 受理
 - 4,097 byte line: 破棄
 - 同一sessionの過去sequence: 拒否
 - 新sessionの`seq=1`: 受理
 - G0 499ms: short
 - G0 500ms: longを1回だけ通知
-- diagnostic build: PASS、RAM 26,716 bytes、Flash 461,693 bytes
+- diagnostic build: PASS、RAM 26,716 bytes、Flash 461,721 bytes
 - production build: PASS、RAM 32,188 bytes、Flash 481,469 bytes
 
 Native fixtureはWindows側に`gcc/g++`がないため、同じsourceをWSLの`g++ 13.3.0`でcompileして実行しました。Cardputer向け2 targetはPlatformIO 6.1.18、Espressif32 6.7.0でbuildしました。
+
+Host側の合成診断は次のcommandで実行できます。出力はstep名とPASS/FAIL classだけで、session、payload、key code、portを表示しません。
+
+```powershell
+cardputer-codex-controller bringup --synthetic
+```
+
+throughputは512 byteのechoを8回直列送受信し、合計byte数と経過時間から算出します。現時点では実機の基準値がないため性能閾値を設けず、測定経路が成立することだけを非侵襲gateにします。RTT、throughput、heapの実機値と判定閾値はhardware gateの証拠として別途確定します。
 
 ## Hardware gate
 
