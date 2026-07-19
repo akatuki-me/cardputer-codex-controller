@@ -8,5 +8,6 @@
 - M5Stack M5Unified: https://github.com/m5stack/M5Unified
 - M5Stack M5GFX: https://github.com/m5stack/M5GFX
 - PlatformIO Espressif32 platform: https://github.com/platformio/platform-espressif32
+- Espressif esptool: https://github.com/espressif/esptool
 
 上流資料のversionと取得日は、依存関係を追加するPRで固定します。取得したWeb page、PDF、source archiveはこのrepositoryへ複製しません。

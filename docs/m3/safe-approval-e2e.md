@@ -43,9 +43,11 @@ Codex CLI 0.144.6の実command approvalでは、文字列decisionとamendment ob
 - `cardputer_adv_bringup` build: PASS、RAM 26,716 bytes、Flash 461,917 bytes
 - 実Codex 0.144.6 + 合成device turn lifecycle: PASS
 - 実Codex 0.144.6 approval host-only + cancel + resolved: PASS
+- Production書き込み前の全8 MiB二重backup: size・SHA-256一致
+- Production firmware upload: PASS、全書き込み領域のhash verification完了
 
-このvalidationではproduction firmwareの書き込みと実port openを実行していません。
+Production firmwareの書き込みと自動resetまでは完了しています。書き込み後の最初の実port openは別gateのため実行していません。
 
 ## 未検証境界
 
-Production実機での300ms guard、最下端到達、物理accept/decline/hold、複数pending表示は未受入です。合成PASSを実機PASSとして扱いません。
+Production実機での起動画面、300ms guard、最下端到達、物理accept/decline/hold、複数pending表示は未受入です。合成PASSを実機PASSとして扱いません。

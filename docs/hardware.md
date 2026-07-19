@@ -29,8 +29,10 @@ Host bridgeは実portを`--port`またはGit管理外のlocal handleで明示選
 
 ## Production controller gate
 
-Production firmwareはbuildとnative fixtureまで検証済みですが、実機への書き込みは未実施です。Production imageの書き込みと、書き込み後の最初のUSB CDC port openは別々の明示承認対象です。
+Production firmwareはbuildとnative fixtureに加え、実機への書き込みと全書き込み領域のhash verificationまで完了しています。Production imageの書き込みと、書き込み後の最初のUSB CDC port openは別々の明示承認対象であり、port openは未実施です。
+
+書き込み前にはdiagnostic firmwareを含む全8 MiBを独立に2回読み出し、両方のsizeとSHA-256一致を確認しました。既存toolchainのROM-only readは2 MiB境界で再現性のある失敗となり、既存stubもUSB通信を維持できなかったため、USB-Serial/JTAG検出を改善した隔離版esptool 4.10.0をread-only backupに限って使用しました。Production uploadは既存toolchainのROM loaderと`--no-stub`を維持しています。Backup、hash値、port、device ID、local path、生logは公開しません。
 
 M1でflasher stub起動後のUSB通信消失を確認したため、productionとdiagnosticのuploadは115200 baudのROM loaderと`--no-stub`を共通契約とします。Production uploadがこの設定を持つことはhost testで固定します。
 
-承認前に許可されるのはbuild、合成CDC、`control --dry-run`までです。承認後はSCR-HOME/RUN、approval guard、物理accept/decline/hold、G0 interrupt、stale/reconnect、full snapshot復元を順に受入し、合成結果を実機PASSへ自動昇格しません。
+書き込み後の最初のport openが承認されるまではbuild、合成CDC、`control --dry-run`までです。承認後はSCR-HOME/RUN、approval guard、物理accept/decline/hold、G0 interrupt、stale/reconnect、full snapshot復元を順に受入し、合成結果を実機PASSへ自動昇格しません。

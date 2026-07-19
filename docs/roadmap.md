@@ -10,19 +10,19 @@ stdio接続、lifecycle、thread/turn、model/list、interrupt、accept/decline/
 
 factory firmwareの退避・復元経路を確立してから、最小echo firmwareでCDC、RTT、throughput、heapを測定します。
 
-状態: diagnostic firmware v0.1.3で実機受入を完了。Production imageは未書き込み。
+状態: diagnostic firmware v0.1.3で実機受入を完了。Recovery gate通過後、production imageの実機書き込みとhash verificationを完了。
 
 ## M2 SCR-HOME vertical slice
 
 app-server eventからhost state、device-link、実機SCR-HOMEまでの縦串を通します。
 
-状態: host runtimeと合成CardputerのSCR-HOME/RUN相当を完了。Production実機画面は承認待ち。
+状態: host runtimeと合成CardputerのSCR-HOME/RUN相当を完了。Production imageは書き込み済みで、起動画面と最初の実port openは未受入。
 
 ## M3 Safe approval E2E
 
 安全guard、pending queue、host response surface、deviceのaccept/decline/hold、interruptを統合します。この段階を実用MVPとします。
 
-状態: 合成CDCと実Codexでpending、host response、resolved、安全guardを完了。物理keyとproduction実機E2Eは承認待ち。
+状態: 合成CDCと実Codexでpending、host response、resolved、安全guardを完了。物理keyとproduction実機E2Eは未受入。
 
 ## M4 Interaction
 
