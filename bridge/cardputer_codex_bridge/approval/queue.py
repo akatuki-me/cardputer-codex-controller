@@ -4,14 +4,14 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
-class PendingApproval:
+class DeviceApproval:
     approval_id: str
     summary: str
     risk_class: str = "normal"
     content_complete: bool = True
 
 
-def device_decisions(approval: PendingApproval) -> tuple[str, ...]:
+def device_decisions(approval: DeviceApproval) -> tuple[str, ...]:
     """一次防御をhostへ残し、危険・不完全な本文ではacceptを隠す。"""
     if approval.risk_class != "normal" or not approval.content_complete:
         return ("decline",)
@@ -20,15 +20,15 @@ def device_decisions(approval: PendingApproval) -> tuple[str, ...]:
 
 class PendingQueue:
     def __init__(self) -> None:
-        self._items: list[PendingApproval] = []
+        self._items: list[DeviceApproval] = []
 
-    def add(self, approval: PendingApproval) -> None:
+    def add(self, approval: DeviceApproval) -> None:
         if any(item.approval_id == approval.approval_id for item in self._items):
             return
         self._items.append(approval)
 
     @property
-    def current(self) -> PendingApproval | None:
+    def current(self) -> DeviceApproval | None:
         return self._items[0] if self._items else None
 
     @property
@@ -38,7 +38,7 @@ class PendingQueue:
     def hold(self, approval_id: str) -> bool:
         return any(item.approval_id == approval_id for item in self._items)
 
-    def resolve(self, approval_id: str) -> PendingApproval:
+    def resolve(self, approval_id: str) -> DeviceApproval:
         for index, item in enumerate(self._items):
             if item.approval_id == approval_id:
                 return self._items.pop(index)

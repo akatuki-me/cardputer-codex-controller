@@ -298,6 +298,13 @@ class AppServerClient:
             message["params"] = params
         self._write_message(message)
 
+    def respond(self, request_id: RequestId, result: JsonObject) -> None:
+        """Send a response to a request initiated by app-server."""
+        if not isinstance(request_id, (int, str)) or isinstance(request_id, bool):
+            raise ValueError("request_id must be an integer or string")
+        self._require_state((AppServerState.READY,))
+        self._write_message({"id": request_id, "result": result})
+
     def next_message(self, *, timeout: float | None = None) -> JsonObject:
         with self._state_lock:
             self._raise_fatal_locked()

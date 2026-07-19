@@ -60,3 +60,14 @@ Bridgeは起動時に照合したCodex versionとrequest kindからこのcontrac
 未知値、型不正、version不一致、空集合ではdevice response UIを出さずhostへ送ります。新しいversionが`availableDecisions`を提示する場合は、その値を優先して同じ正規化を行います。
 
 Command本文やfile一覧だけでは判断材料が完結しないrequest、network approval context、amendment payloadはdeviceで応答せずhostへ送ります。
+
+## Host approval lifecycle
+
+Host bridgeはcommand executionとfile changeを別型で登録し、request受信だけではresponseを
+送りません。Hostが明示decisionを送信した後もpendingを維持し、同じ`requestId`と`threadId`の
+`serverRequest/resolved`を受信した時点でだけ解決済みにします。
+
+request ID不一致、thread ID不一致、二重応答、request kindに合わないdecision、未知decisionは
+protocol/state errorとして拒否します。0.144.5のobject decisionはpayloadを保持したまま
+`result.decision`へ格納します。詳細と合成processによるconsumer integrationは
+[`m0/approval-contract.md`](m0/approval-contract.md)を参照してください。
