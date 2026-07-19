@@ -53,13 +53,13 @@ Host側の合成診断は次のcommandで実行できます。出力はstep名�
 cardputer-codex-controller bringup --synthetic
 ```
 
-throughputは512 byteのechoを8回直列送受信し、合計byte数と経過時間から算出します。現時点では実機の基準値がないため性能閾値を設けず、測定経路が成立することだけを非侵襲gateにします。RTT、throughput、heapの実機値と判定閾値はhardware gateの証拠として別途確定します。
+throughputは512 byteのechoを8回直列送受信し、合計byte数と経過時間から算出します。現時点では実機の基準値がないため性能閾値を設けず、測定経路が成立することだけを非侵襲gateにします。実portでは`echo_4096_elapsed_ms`、`rtt_ms`、`throughput_bytes_per_second`、`heap_bytes`を単位付きで出力し、port、session、payload、key codeは出力しません。実測値と判定閾値はhardware gateの証拠として別途確定します。
 
 ## Hardware gate
 
 次は未実施です。build成功からhardware PASSへは昇格しません。
 
-1. diagnostic firmwareの書き込み
+1. `upload_speed = 115200`へ固定したdiagnostic firmwareの書き込み
 2. 最初のCOM port open
 3. board IDがCardputer-Advを示すこと
 4. device hello → host hello → ready

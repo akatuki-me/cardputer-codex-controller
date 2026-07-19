@@ -6,9 +6,12 @@ from collections.abc import Callable
 
 from cardputer_codex_bridge.device_link import (
     BringupSession,
+    EchoMeasurement,
     SyntheticSerialProvider,
+    ThroughputMeasurement,
     run_bringup,
 )
+from cardputer_codex_bridge.device_link.bringup import _write_hardware_measurements
 
 
 def test_synthetic_bringup_exercises_the_m1_acceptance_path() -> None:
@@ -45,6 +48,31 @@ def test_synthetic_bringup_exercises_the_m1_acceptance_path() -> None:
     assert "session" not in result
     assert "payload" not in result
     assert '"code"' not in result
+    assert "echo_4096_elapsed_ms" not in result
+    assert "throughput_bytes_per_second" not in result
+
+
+def test_hardware_measurements_are_unit_labeled_and_do_not_include_transport_identity() -> None:
+    output = io.StringIO()
+
+    _write_hardware_measurements(
+        output,
+        maximum_echo=EchoMeasurement(payload_bytes=4_040, elapsed_ms=12.3456),
+        rtt_ms=4.5678,
+        throughput=ThroughputMeasurement(
+            payload_bytes=4_096,
+            elapsed_ms=250.0,
+            bytes_per_second=16_384.4,
+        ),
+        heap_bytes=250_000,
+    )
+
+    assert output.getvalue().splitlines() == [
+        "echo_4096_elapsed_ms 12.346",
+        "rtt_ms 4.568",
+        "throughput_bytes_per_second 16384",
+        "heap_bytes 250000",
+    ]
 
 
 def test_reconnect_rotates_session_and_resets_host_sequence() -> None:

@@ -420,7 +420,7 @@ def run_bringup(
         _pass(output, "board_cardputer_adv")
         session.echo("bringup", step_timeout)
         _pass(output, "echo_small")
-        session.echo_maximum_line(step_timeout)
+        maximum_echo = session.echo_maximum_line(step_timeout)
         _pass(output, "echo_4096")
         rtt_ms = session.ping(step_timeout)
         if rtt_ms <= 0:
@@ -432,10 +432,18 @@ def run_bringup(
         _pass(output, "throughput")
         if not session.wait_heartbeat(step_timeout):
             raise TimeoutError("bringup heartbeat was not received")
-        if session.last_heap is None or session.last_heap <= 0:
+        heap_bytes = session.last_heap
+        if heap_bytes is None or heap_bytes <= 0:
             raise BringupError("bringup heap measurement is invalid")
         _pass(output, "heartbeat")
         if synthetic_device is None:
+            _write_hardware_measurements(
+                output,
+                maximum_echo=maximum_echo,
+                rtt_ms=rtt_ms,
+                throughput=throughput,
+                heap_bytes=heap_bytes,
+            )
             output.write("input_test waiting: digit, G0 tap, G0 hold\n")
             output.flush()
         if not session.wait_digit(step_timeout):
@@ -456,6 +464,20 @@ def run_bringup(
         raise BringupError("synthetic bringup device failed")
     output.write("codex_connection N/A\n")
     _pass(output, "bringup")
+
+
+def _write_hardware_measurements(
+    output: TextIO,
+    *,
+    maximum_echo: EchoMeasurement,
+    rtt_ms: float,
+    throughput: ThroughputMeasurement,
+    heap_bytes: int,
+) -> None:
+    output.write(f"echo_4096_elapsed_ms {maximum_echo.elapsed_ms:.3f}\n")
+    output.write(f"rtt_ms {rtt_ms:.3f}\n")
+    output.write(f"throughput_bytes_per_second {throughput.bytes_per_second:.0f}\n")
+    output.write(f"heap_bytes {heap_bytes}\n")
 
 
 def _drive_synthetic_device(
