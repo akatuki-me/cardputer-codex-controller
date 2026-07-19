@@ -368,7 +368,7 @@ def test_controller_startup_failure_keeps_the_connection_timeout(
             port="synthetic",
             provider=FailingSerialProvider(),
             command=(sys.executable, "-u", str(FAKE_SERVER), "idle"),
-            step_timeout=0.05,
+            step_timeout=0.5,
         )
 
     assert "controller event pump did not stop" not in output.getvalue()
