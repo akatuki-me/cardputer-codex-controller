@@ -99,35 +99,15 @@ cardputer-codex-controller bringup --port-handle local-private/device-port.txt -
 
 `--dry-run`を外す操作と診断firmwareの書き込みはhardware承認ゲートの対象です。実portでは物理入力を最大120秒待ちます。詳細な手順と検証済み範囲は[M1 bring-up](docs/m1/cardputer-bringup.md)を参照してください。
 
-## USB CDC E2E harness
-
-認証済みCodex app-server、host state reducer、合成USB CDCを1本につなぎ、Cardputerから届いた想定の`interrupt`がactive turnへ一度だけ転送されることを確認できます。
-
-```powershell
-cardputer-codex-controller e2e --synthetic
-```
-
-合成CDCはdevice `hello`、重複`interrupt`、host側のNDJSONをmemory内で往復させます。実portは開かず、出力にはthread ID、turn ID、prompt、model、pathを含めません。
-
-実portは`--port`またはGit管理外の1行fileを指す`--port-handle`で明示選択します。初回openの承認前は`--dry-run`を必ず付けます。dry-runは選択だけを検証し、serial I/OとCodexを起動しません。
-
-```powershell
-cardputer-codex-controller e2e --port-handle local-private/device-port.txt --dry-run
-```
-
-`--dry-run`を外す操作はhardware承認ゲートの対象です。実portを使ったE2Eは未検証であり、合成E2EのPASSを実機PASSとして扱いません。
-
 ## 状態
 
 - 公開開発基盤: 実装済み
 - M0 Host app-server transport・thread/turn操作: 実装済み
 - Host controller合成デモ: 実装済み
-- 実Codex・合成USB CDC E2E: 実装済み
 - Cardputer-Adv production firmware MVP: build・native fixture実装済み（production imageは実機未検証）
-- M1診断firmware・host bring-up harness: Cardputer-Adv実機でPASS
-- 実USB CDC E2E: 未検証
+- M1診断firmware・host bring-up harness: v0.1.1で実機機能を確認済み。recovery-first復元とstale 6秒以内の計時は未完了
 - M0 approval・multi-client・ADR: 継続中
-- 実機書き込み: M1診断firmware v0.1.1を検証済み、production imageは未実施
+- 実機書き込み: M1診断firmware v0.1.1を機能確認済み、production imageは未実施
 
 ## 免責
 

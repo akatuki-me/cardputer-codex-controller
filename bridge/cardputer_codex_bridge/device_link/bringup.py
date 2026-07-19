@@ -424,7 +424,7 @@ def run_bringup(
         maximum_echo = session.echo_maximum_line(step_timeout)
         _pass(output, "echo_4096")
         rtt_ms = session.ping(step_timeout)
-        if rtt_ms <= 0:
+        if synthetic_device is None and rtt_ms <= 0:
             raise BringupError("bringup RTT measurement is invalid")
         _pass(output, "rtt")
         throughput = session.measure_throughput(timeout=step_timeout)

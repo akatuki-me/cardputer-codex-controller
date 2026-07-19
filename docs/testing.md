@@ -15,8 +15,6 @@
 - `model/list`失敗・空・model不一致時にeffort変更を無効化する
 - service down時にresponse、steer、interrupt、effort変更をlockする
 - provider injectionしたserial read threadがNDJSON、ping/pong、stale、再接続を処理する
-- 再接続ごとに`hello`とfull snapshotを再送する
-- 合成deviceの重複`interrupt`をactive turnへ一度だけ転送する
 - M1診断で接続ごとにopaque sessionを更新し、host sequenceを1へresetする
 - M1診断で4 KiB echo、RTT、連続echo throughput、heartbeat/heapを測定する
 - M1診断で数字key、G0 499ms short、500ms longを識別する
@@ -25,15 +23,11 @@
 
 fixtureは合成ID、相対path、架空workspace名だけを使用します。認証済みCodexや実機を必要とする試験はGitHub Actionsへ入れず、local acceptance evidenceとして記録します。
 
-## Local E2E
-
-`cardputer-codex-controller e2e --synthetic`は認証済みCodexと合成USB CDCを接続します。出力はstep名とPASS/FAIL classだけに限定し、ID、prompt、model、path、portを含めません。
-
-`e2e --port`または`e2e --port-handle`で実portを選択できますが、承認前は`--dry-run`だけを実行します。dry-runはserial I/OとCodexを起動しません。実port未使用の結果はhardware PASSへ昇格しません。
+## M1 local bring-up
 
 `cardputer-codex-controller bringup --synthetic`はCodex非依存のM1診断経路を合成deviceで実行します。`bringup --port ... --dry-run`はproviderを生成せず、portを開きません。合成結果は診断protocolとhost harnessの証拠であり、board、keyboard、G0、USB CDCの実機PASSには昇格しません。
 
-Cardputer-Adv実機では診断firmware v0.1.1を用い、board、4 KiB echo、RTT、throughput、heap、stale、再接続、数字key、G0 short/longを受入済みです。実portの物理入力待ちは各event最大120秒です。この結果はfactory復元やproduction controller、実Codex E2Eへ自動的に昇格しません。
+Cardputer-Adv実機では診断firmware v0.1.1を用い、board、4 KiB echo、RTT、throughput、heap、stale表示、再接続、数字key、G0 short/longの機能を確認済みです。staleは6秒以内の計時が未完了であり、factory復元も未実施のため、M1 hardware gate全体は未充足です。実portの物理入力待ちは各event最大120秒です。
 
 ## Hardware tests
 

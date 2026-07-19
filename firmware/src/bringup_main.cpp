@@ -14,7 +14,6 @@ namespace {
 
 constexpr std::uint32_t kHelloIntervalMs = 2000;
 constexpr std::uint32_t kHeartbeatIntervalMs = 2000;
-constexpr std::uint32_t kHostStaleAfterMs = 6000;
 constexpr const char* kMode = "m1-bringup";
 
 BringupLineReceiver receiver;
@@ -311,7 +310,7 @@ void loop() {
     handle_keyboard();
     handle_g0(now_ms);
 
-    if (linked && (now_ms - last_host_receive_ms) > kHostStaleAfterMs) {
+    if (linked && bringup_host_is_stale(now_ms, last_host_receive_ms)) {
         linked = false;
         screen_dirty = true;
     }

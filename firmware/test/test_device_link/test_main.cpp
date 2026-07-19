@@ -270,6 +270,12 @@ void test_bringup_checksum_is_fnv1a_32() {
     TEST_ASSERT_EQUAL_HEX32(0x4F9F2CAB, fnv1a("hello", 5));
 }
 
+void test_bringup_stale_boundary_has_margin_below_six_seconds() {
+    TEST_ASSERT_TRUE(kBringupHostStaleAfterMs < 6000U);
+    TEST_ASSERT_FALSE(bringup_host_is_stale(kBringupHostStaleAfterMs - 1U, 0U));
+    TEST_ASSERT_TRUE(bringup_host_is_stale(kBringupHostStaleAfterMs, 0U));
+}
+
 void test_g0_tracker_distinguishes_499ms_short_and_500ms_long_once() {
     G0Tracker tracker;
 
@@ -336,6 +342,7 @@ int main(int, char**) {
     RUN_TEST(test_usb_rx_buffers_cover_two_maximum_host_lines);
     RUN_TEST(test_bringup_session_resets_sequence_only_for_a_new_session);
     RUN_TEST(test_bringup_checksum_is_fnv1a_32);
+    RUN_TEST(test_bringup_stale_boundary_has_margin_below_six_seconds);
     RUN_TEST(test_g0_tracker_distinguishes_499ms_short_and_500ms_long_once);
     return UNITY_END();
 }

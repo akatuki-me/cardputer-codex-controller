@@ -9,6 +9,7 @@ constexpr std::size_t kBringupHostLineMaxBytes = 4096;
 constexpr std::size_t kBringupSerialRxBufferBytes = kBringupHostLineMaxBytes * 2;
 constexpr std::size_t kBringupSessionMaxBytes = 32;
 constexpr std::uint32_t kBringupLongPressMs = 500;
+constexpr std::uint32_t kBringupHostStaleAfterMs = 5500;
 
 using BringupLineHandler = void (*)(const char* line, std::size_t length, void* context);
 
@@ -67,5 +68,9 @@ private:
 };
 
 [[nodiscard]] std::uint32_t fnv1a(const char* value, std::size_t length);
+[[nodiscard]] bool bringup_host_is_stale(
+    std::uint32_t now_ms,
+    std::uint32_t last_receive_ms
+);
 
 }  // namespace cardputer_bringup

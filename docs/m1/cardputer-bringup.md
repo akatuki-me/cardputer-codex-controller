@@ -6,9 +6,11 @@
 
 hardware read-only preflight: PASS
 
-hardware bring-up gate: PASS
+hardware機能確認（diagnostic v0.1.1）: PASS
 
-factory復元・production controller gate: 未実施
+stale 6秒以内の実機計時: 未実施
+
+recovery-first・production controller gate: 未実施
 
 ## 目的
 
@@ -46,7 +48,7 @@ Hostはserial openごとに新しいsessionと送信`seq=1`を作ります。Fir
 - 新sessionの`seq=1`: 受理
 - G0 499ms: short
 - G0 500ms: longを1回だけ通知
-- diagnostic build: PASS、RAM 26,716 bytes、Flash 461,721 bytes
+- diagnostic v0.1.2 build: PASS、RAM 26,716 bytes、Flash 461,741 bytes
 - production build: PASS、RAM 32,188 bytes、Flash 481,469 bytes
 - ROM loader read-only probe: ESP32-S3、8 MB flashを確認
 - flasher stub path: stub起動後のflash ID要求で通信が途切れ、erase/write開始前に停止
@@ -68,7 +70,7 @@ throughputは512 byteのechoを8回直列送受信し、合計byte数と経過�
 - USB CDC: port open、hello、ready、small echo、4,096 byte line、heartbeatをPASS
 - Cardputer-Adv判定: PASS
 - 再接続: 複数回のport再openと新host sessionでPASS
-- stale: host close後の`LINK WAIT/STALE`表示を実機で確認
+- stale: host close後の`LINK WAIT/STALE`表示を実機で確認。ただし遷移時間は未計測
 - keyboard: 数字keyをPASS
 - G0: shortと500ms以上のlongをPASS
 - 4,096 byte echo: 63 ms
@@ -78,4 +80,8 @@ throughputは512 byteのechoを8回直列送受信し、合計byte数と経過�
 
 値は初回baselineであり、性能保証値ではありません。firmware既定の256 byte USB CDC RX queueでは4 KiB lineが欠落したため、productionとdiagnosticの双方を最大line 2本分の8,192 byteへ拡張して再試験しました。
 
-書き込みとport openは対象とcommandを提示し、人間の明示承認後に実行しました。port番号、serial number、device path、生logは公開証拠へ含めていません。factory imageの復元試験、production controller image、実CodexとのE2EはこのPASSに含みません。
+書き込みとport openは対象とcommandを提示し、人間の明示承認後に実行しました。port番号、serial number、device path、生logは公開証拠へ含めていません。
+
+診断firmware v0.1.1のstale判定は6,000 msを超えた後に遷移する実装であり、「6秒以内」の受入条件を満たす証拠にはできません。v0.1.2では5,500 ms以上で遷移する境界へ変更し、native fixtureで5,499 ms非遷移・5,500 ms遷移を検証します。v0.1.2の実機書き込みと計時が完了するまで、M1 hardware gate全体は未充足です。
+
+また、factory imageの復元試験を先行できていないため、repositoryのrecovery-first gateも未充足です。診断firmwareの機能確認PASSはこのgateを代替せず、production controller imageや実Codex E2EのPASSへ昇格しません。

@@ -93,4 +93,8 @@ std::uint32_t fnv1a(const char* value, std::size_t length) {
     return checksum;
 }
 
+bool bringup_host_is_stale(std::uint32_t now_ms, std::uint32_t last_receive_ms) {
+    return (now_ms - last_receive_ms) >= kBringupHostStaleAfterMs;
+}
+
 }  // namespace cardputer_bringup
