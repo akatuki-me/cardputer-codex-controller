@@ -72,3 +72,15 @@ skipした2件は既存の環境変数opt-in型live app-server testである。�
 - firmware書き込み、flash読出し、factory firmware復元
 
 これらは今回のPASSへ含めない。
+
+## 実機診断で判明した契約修正
+
+実USB CDCでdeviceが先に`hello`を送ることを確認した。接続直後にhostから`hello`とfull snapshotを送る実装では、device側の受信準備前に初期frameを失う可能性があるため、handshakeを次の順序へ固定した。
+
+1. deviceが`hello`を送る
+2. hostが`hello`を返す
+3. hostがfull snapshotを送る
+
+hostは同一接続中の重複`hello`へ再応答せず、再接続時だけhandshake状態を初期化する。Windowsでread thread終了とserial closeが競合した場合も、close処理から`AttributeError`を漏らさない回帰試験を追加した。
+
+実port単体ではdevice `hello`受信、link active、正常closeまで確認した。一方、実機画面でfull snapshotが反映されることと物理key入力は未受入であり、M1のCodex非依存diagnosticsで別々に検証する。

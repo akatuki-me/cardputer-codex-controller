@@ -28,6 +28,8 @@ class DeviceControllerSession:
         self._adapter = adapter
         self._sequence = 0
         self._sequence_lock = threading.Lock()
+        self._handshake_lock = threading.Lock()
+        self._handshake_complete = False
         self._message_lock = threading.Lock()
         self._device_hello = threading.Event()
         self._interrupt_forwarded = threading.Event()
@@ -82,14 +84,9 @@ class DeviceControllerSession:
 
     def _on_connected(self) -> None:
         self._state.link_state = LinkState.ACTIVE
-        hello: JsonObject = {
-            "t": "hello",
-            "seq": self._next_sequence(),
-            "proto": 1,
-            "host": "bridge",
-        }
-        if not self._link.send(hello) or not self.send_snapshot():
-            raise OSError("initial device-link snapshot could not be sent")
+        self._device_hello.clear()
+        with self._handshake_lock:
+            self._handshake_complete = False
 
     def _on_stale(self) -> None:
         self._state.link_state = LinkState.STALE
@@ -97,6 +94,18 @@ class DeviceControllerSession:
     def _on_message(self, message: JsonObject) -> None:
         message_type = message["t"]
         if message_type == "hello":
+            with self._handshake_lock:
+                if self._handshake_complete:
+                    return
+                hello: JsonObject = {
+                    "t": "hello",
+                    "seq": self._next_sequence(),
+                    "proto": 1,
+                    "host": "bridge",
+                }
+                if not self._link.send(hello) or not self.send_snapshot():
+                    raise OSError("initial device-link snapshot could not be sent")
+                self._handshake_complete = True
             self._device_hello.set()
             return
         if message_type == "select":

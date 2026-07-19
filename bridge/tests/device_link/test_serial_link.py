@@ -48,6 +48,7 @@ def test_session_sends_hello_full_snapshot_and_forwards_interrupt_once() -> None
     session.start()
     try:
         provider.wait_for_port()
+        assert provider.decoded_host_messages() == []
         provider.inject({"t": "hello", "seq": 1, "proto": 1})
         provider.inject({"t": "interrupt", "seq": 2})
         provider.inject({"t": "interrupt", "seq": 3})
@@ -55,12 +56,15 @@ def test_session_sends_hello_full_snapshot_and_forwards_interrupt_once() -> None
         assert session.wait_for_device_hello(1.0)
         assert session.wait_for_interrupt_messages(2, 1.0)
         assert adapter.calls == [("thread-synthetic", "turn-synthetic")]
+        provider.inject({"t": "hello", "seq": 4, "proto": 1})
+        time.sleep(0.05)
         host_messages = provider.decoded_host_messages()
         assert host_messages[0]["t"] == "hello"
         assert host_messages[0]["proto"] == 1
         assert host_messages[1]["t"] == "state"
         assert host_messages[1]["full"] is True
         assert len(host_messages[1]["slots"]) == 6
+        assert len(host_messages) == 2
     finally:
         session.close()
 
