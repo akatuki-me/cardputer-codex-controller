@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -13,6 +14,7 @@ from cardputer_codex_bridge.controller import (
 )
 from cardputer_codex_bridge.device_link import (
     PySerialProvider,
+    SerialLink,
     SerialPort,
     SyntheticSerialPort,
     SyntheticSerialProvider,
@@ -46,6 +48,7 @@ def test_session_sends_hello_full_snapshot_and_forwards_interrupt_once() -> None
     session.start()
     try:
         provider.wait_for_port()
+        assert provider.decoded_host_messages() == []
         provider.inject({"t": "hello", "seq": 1, "proto": 1})
         provider.inject({"t": "interrupt", "seq": 2})
         provider.inject({"t": "interrupt", "seq": 3})
@@ -53,12 +56,15 @@ def test_session_sends_hello_full_snapshot_and_forwards_interrupt_once() -> None
         assert session.wait_for_device_hello(1.0)
         assert session.wait_for_interrupt_messages(2, 1.0)
         assert adapter.calls == [("thread-synthetic", "turn-synthetic")]
+        provider.inject({"t": "hello", "seq": 4, "proto": 1})
+        time.sleep(0.05)
         host_messages = provider.decoded_host_messages()
         assert host_messages[0]["t"] == "hello"
         assert host_messages[0]["proto"] == 1
         assert host_messages[1]["t"] == "state"
         assert host_messages[1]["full"] is True
         assert len(host_messages[1]["slots"]) == 6
+        assert len(host_messages) == 2
     finally:
         session.close()
 
@@ -209,6 +215,62 @@ def test_pyserial_provider_disables_flow_control_without_line_toggles(
     assert calls[0]["dsrdtr"] is False
     assert "dtr" not in calls[0]
     assert "rts" not in calls[0]
+
+
+def test_close_contains_attribute_error_from_windows_double_close_race() -> None:
+    class CloseRacePort:
+        def __init__(self) -> None:
+            self.unblock = threading.Event()
+            self.close_calls = 0
+
+        def read(self, size: int = 1) -> bytes:
+            del size
+            self.unblock.wait(timeout=5.0)
+            raise OSError("synthetic close")
+
+        def write(self, data: bytes) -> int:
+            return len(data)
+
+        def close(self) -> None:
+            self.close_calls += 1
+            self.unblock.set()
+            if self.close_calls > 1:
+                raise AttributeError("synthetic Windows serial close race")
+
+    class SinglePortProvider:
+        def __init__(self) -> None:
+            self.port = CloseRacePort()
+
+        def open(
+            self,
+            port: str,
+            *,
+            baudrate: int,
+            read_timeout: float,
+        ) -> SerialPort:
+            del port, baudrate, read_timeout
+            return self.port
+
+    provider = SinglePortProvider()
+    link = SerialLink(
+        port="synthetic",
+        provider=provider,
+        on_message=lambda message: None,
+        on_connected=lambda: None,
+        on_stale=lambda: None,
+        ping_factory=lambda: {"t": "ping", "seq": 1},
+        read_timeout=0.01,
+        ping_interval=1.0,
+        stale_after=3.0,
+        reconnect_delay=0.01,
+    )
+
+    link.start()
+    assert link.wait_connected(1.0)
+    link.close()
+
+    assert provider.port.close_calls == 2
+    assert link.last_unexpected_error_type is None
 
 
 def _wait_until(predicate: Any, *, timeout: float) -> bool:

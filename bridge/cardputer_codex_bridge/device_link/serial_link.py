@@ -133,14 +133,16 @@ class SerialLink:
 
     def close(self) -> None:
         self._stop.set()
-        with self._connection_lock:
-            connection = self._connection
-        if connection is not None:
-            with suppress(OSError):
-                connection.close()
         thread = self._thread
         if thread is not None:
             thread.join(timeout=max(1.0, self._read_timeout * 4))
+            if thread.is_alive():
+                with self._connection_lock:
+                    connection = self._connection
+                if connection is not None:
+                    with suppress(OSError, AttributeError):
+                        connection.close()
+                thread.join(timeout=max(1.0, self._read_timeout * 4))
         self._thread = None
 
     def _run(self) -> None:
@@ -186,7 +188,7 @@ class SerialLink:
                     if self._connection is connection:
                         self._connection = None
                 if connection is not None:
-                    with suppress(OSError):
+                    with suppress(OSError, AttributeError):
                         connection.close()
                 if became_active:
                     self._on_stale()
