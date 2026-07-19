@@ -34,11 +34,17 @@ _APP_SERVER_SHUTDOWN_TIMEOUT_SECONDS = 60.0
 
 
 class _OperationsInterruptAdapter:
-    def __init__(self, operations: AppServerOperations) -> None:
+    def __init__(
+        self,
+        operations: AppServerOperations,
+        emit: Callable[[str], None],
+    ) -> None:
         self._operations = operations
+        self._emit = emit
 
     def interrupt(self, thread_id: str, turn_id: str) -> None:
         self._operations.interrupt_turn(ThreadId(thread_id), TurnId(turn_id))
+        self._emit("device_interrupt PASS\n")
 
 
 class _EventPump:
@@ -204,7 +210,7 @@ def run_controller(
         state.slots[0].thread_id = str(controller_thread.thread_id)
         session = DeviceControllerSession(
             state=state,
-            adapter=_OperationsInterruptAdapter(operations),
+            adapter=_OperationsInterruptAdapter(operations, emit),
             provider=provider,
             port=port,
         )
@@ -216,8 +222,14 @@ def run_controller(
             codex_version=initialized.codex_version,
         )
         console = HostApprovalConsole(coordinator)
+
+        def handle_device_decision(approval_id: str, decision: str) -> bool:
+            accepted = coordinator.handle_device_decision(approval_id, decision)
+            emit(f"device_{decision} {'PASS' if accepted else 'REJECTED'}\n")
+            return accepted
+
         session.configure_approval(
-            decision_handler=coordinator.handle_device_decision,
+            decision_handler=handle_device_decision,
             ready_handler=coordinator.republish,
         )
         session.start()
@@ -261,12 +273,23 @@ def run_controller(
                 continue
             if command_line == "wait":
                 deadline = time.monotonic() + step_timeout
+                wait_incomplete = False
                 while operations.active_turn(controller_thread.thread_id) is not None:
                     pump.raise_if_failed()
+                    if any(
+                        item.status == "awaiting_decision"
+                        for item in coordinator.pending
+                    ):
+                        emit("turn_wait BLOCKED pending_approval\n")
+                        wait_incomplete = True
+                        break
                     if time.monotonic() >= deadline:
-                        raise TimeoutError("controller turn did not complete")
+                        emit("turn_wait TIMEOUT\n")
+                        wait_incomplete = True
+                        break
                     time.sleep(0.01)
-                emit("turn_wait PASS\n")
+                if not wait_incomplete:
+                    emit("turn_wait PASS\n")
                 continue
             if command_line.startswith(
                 ("approve ", "decline ", "cancel ")

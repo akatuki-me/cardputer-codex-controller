@@ -349,7 +349,7 @@ void handle_keyboard(std::uint32_t now_ms) {
     if (M5Cardputer.Keyboard.isKeyPressed('d')) {
         controller.set_approval_choice(ApprovalChoice::Decline);
     }
-    if (!M5Cardputer.Keyboard.isKeyPressed('\n')) {
+    if (!M5Cardputer.Keyboard.keysState().enter) {
         return;
     }
 

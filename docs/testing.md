@@ -56,6 +56,8 @@ Cardputer-Adv実機では診断firmware v0.1.3を用い、recovery-first復元�
 
 App-server終了は処理中RPCとthread cleanupをdrainするため、controllerは終了時だけ最大60秒を待ちます。60秒後の強制kill、非0終了、event reader残留はFAILです。
 
+Production実機のlocal acceptanceでは、実Codex turnのHOME/RUN、G0 interrupt、host-only cancel、incomplete file approvalのhold・accept禁止・物理decline、stale/reconnectを確認します。完全なlow-risk acceptと複数pendingは、実行処理を持たない2件のlocal fixtureで物理accept、残数、自動送り、物理decline、pending zeroを確認します。実測中に検出したEnter special-key判定と`wait`のapproval/timeout復帰には回帰テストがあります。
+
 ## Hardware tests
 
 - M1: backup、restore、echo、RTT、4KB line、heap

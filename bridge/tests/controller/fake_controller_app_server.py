@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from typing import Any
 
 
@@ -84,7 +85,7 @@ def main() -> int:
                 },
             }
         )
-    elif mode == "turn":
+    elif mode in ("turn", "turn_approval", "turn_interrupt"):
         turn_start = _read()
         if turn_start is None or turn_start.get("method") != "turn/start":
             return 17
@@ -105,12 +106,55 @@ def main() -> int:
                 },
             }
         )
+        if mode == "turn_interrupt":
+            interrupt = _read()
+            if interrupt is None or interrupt.get("method") != "turn/interrupt":
+                return 18
+            interrupt_params = interrupt.get("params")
+            if not isinstance(interrupt_params, dict) or interrupt_params.get(
+                "turnId"
+            ) != "turn-1":
+                return 19
+            _write({"id": interrupt.get("id"), "result": {}})
+        elif mode == "turn_approval":
+            time.sleep(0.05)
+            _write(
+                {
+                    "id": "rpc-private",
+                    "method": "item/commandExecution/requestApproval",
+                    "params": {
+                        "threadId": "thread-controller",
+                        "turnId": "turn-1",
+                        "itemId": "item-1",
+                        "startedAtMs": 1000,
+                        "command": "tool --check fixture.txt",
+                        "cwd": "workspace/fixture",
+                    },
+                }
+            )
+            if _read() != {"id": "rpc-private", "result": {"decision": "decline"}}:
+                return 20
+            _write(
+                {
+                    "method": "serverRequest/resolved",
+                    "params": {
+                        "requestId": "rpc-private",
+                        "threadId": "thread-controller",
+                    },
+                }
+            )
         _write(
             {
                 "method": "turn/completed",
                 "params": {
                     "threadId": "thread-controller",
-                    "turn": {"id": "turn-1", "items": [], "status": "completed"},
+                    "turn": {
+                        "id": "turn-1",
+                        "items": [],
+                        "status": (
+                            "interrupted" if mode == "turn_interrupt" else "completed"
+                        ),
+                    },
                 },
             }
         )

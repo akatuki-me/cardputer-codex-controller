@@ -38,6 +38,8 @@ Effort候補は現在modelに対応する`model/list.data[].supportedReasoningEf
 ## Interaction rules
 
 - 選択肢と定型返信は選択後にEnterで確定する。
+- Approvalは`0`でlocal hold、`a`でaccept、`d`でdeclineを選び、Enter special-key stateで確定する。
+- Approval本文は`j` / `k`で下 / 上へscrollする。
 - G0の500ms長押しは、表示画面ではなくfocus中slotの`turnActive`でinterrupt対象を決める。
 - app-serverの構造化質問は初期版でdeviceから回答しない。
 - `acceptForSession`、`cancel`、policy amendmentはhost側だけで扱う。

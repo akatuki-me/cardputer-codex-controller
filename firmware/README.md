@@ -16,6 +16,17 @@ Cardputer-Adv向けdevice-link v1 firmwareです。PlatformIOとArduino framewor
 
 credential、prompt履歴、approval本文をNVSまたはmicroSDへ保存する処理はありません。
 
+## 物理操作
+
+- `1`〜`6`: focus slotを選択
+- `j` / `k`: approval本文を下 / 上へscroll
+- `0`: approvalをlocal holdし、requestを解決しない
+- `a` / `d`: accept / declineを選択
+- Enter: 選択したapproval responseを確定
+- G0を500ms長押し: focus中active turnをinterrupt
+
+EnterはM5Cardputerのprintable keyではなくspecial-key stateとして取得します。Production実機でhold、accept、decline、accept禁止、G0 interruptを受入済みです。
+
 ## Buildとfixture
 
 repositoryの開発依存関係を導入した環境で次を実行します。

@@ -83,6 +83,44 @@ class DeviceApprovalInput(io.StringIO):
         return "quit\n"
 
 
+class DeviceInterruptInput(io.StringIO):
+    def __init__(
+        self,
+        output: CoordinatedOutput,
+        provider: SyntheticSerialProvider,
+    ) -> None:
+        super().__init__()
+        self._output = output
+        self._provider = provider
+        self._step = 0
+
+    def readline(self, size: int = -1) -> str:
+        del size
+        if self._step == 0:
+            self._step += 1
+            return "run Keep the turn active\n"
+        if self._step == 1:
+            assert self._output.wait_for("turn_started PASS")
+            state = next(
+                message
+                for message in reversed(self._provider.decoded_host_messages())
+                if message["t"] == "state" and message["slots"][0]["turnActive"] is True
+            )
+            self._provider.inject(
+                {
+                    "t": "interrupt",
+                    "seq": 2,
+                    "slot": 1,
+                    "turnId": state["slots"][0]["turnId"],
+                }
+            )
+            assert self._output.wait_for("device_interrupt PASS")
+            self._step += 1
+            return "wait\n"
+        assert self._output.wait_for("turn_wait PASS")
+        return "quit\n"
+
+
 def test_controller_runtime_reaches_device_ready_and_closes_cleanly(
     tmp_path: Path,
 ) -> None:
@@ -202,6 +240,7 @@ def test_controller_runtime_device_decision_reaches_app_server(
     assert len(sending) == 1
     assert sending[0]["decisions"] == []
     assert any(message["t"] == "approval_resolved" for message in messages)
+    assert "device_decline PASS\n" in output.getvalue()
 
 
 def test_controller_runtime_runs_and_waits_for_a_turn(tmp_path: Path) -> None:
@@ -231,6 +270,84 @@ def test_controller_runtime_runs_and_waits_for_a_turn(tmp_path: Path) -> None:
     ]
     assert any(state["slots"][0]["turnActive"] is True for state in states)
     assert any(state["slots"][0]["attentionKind"] == "done" for state in states)
+
+
+def test_controller_wait_returns_to_console_when_approval_arrives(
+    tmp_path: Path,
+) -> None:
+    provider = SyntheticSerialProvider()
+    output = io.StringIO()
+
+    run_controller(
+        output,
+        io.StringIO(
+            "run Inspect the repository\n"
+            "wait\n"
+            "decline approval-000001\n"
+            "wait\n"
+            "quit\n"
+        ),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(sys.executable, "-u", str(FAKE_SERVER), "turn_approval"),
+        step_timeout=2.0,
+    )
+
+    result = output.getvalue()
+    assert "turn_wait BLOCKED pending_approval\n" in result
+    assert "approval_response PASS\n" in result
+    assert "turn_completed PASS\n" in result
+    assert "turn_wait PASS\n" in result
+    assert result.endswith("controller_stopped PASS\n")
+
+
+def test_controller_reports_device_interrupt(tmp_path: Path) -> None:
+    provider = SyntheticSerialProvider()
+    output = CoordinatedOutput()
+
+    run_controller(
+        output,
+        DeviceInterruptInput(output, provider),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(sys.executable, "-u", str(FAKE_SERVER), "turn_interrupt"),
+        step_timeout=2.0,
+    )
+
+    result = output.getvalue()
+    assert result.count("device_interrupt PASS\n") == 1
+    assert "turn_completed PASS\n" in result
+    assert result.endswith("controller_stopped PASS\n")
+
+
+def test_controller_wait_timeout_returns_to_console(tmp_path: Path) -> None:
+    provider = SyntheticSerialProvider()
+    output = io.StringIO()
+
+    run_controller(
+        output,
+        io.StringIO("run Keep the turn active\nwait\ninterrupt\nwait\nquit\n"),
+        cwd=tmp_path,
+        label="fixture",
+        port="synthetic",
+        provider=provider,
+        synthetic_device=provider,
+        command=(sys.executable, "-u", str(FAKE_SERVER), "turn_interrupt"),
+        step_timeout=0.2,
+    )
+
+    result = output.getvalue()
+    assert "turn_wait TIMEOUT\n" in result
+    assert "interrupt PASS\n" in result
+    assert "turn_completed PASS\n" in result
+    assert "turn_wait PASS\n" in result
+    assert result.endswith("controller_stopped PASS\n")
 
 
 def test_control_dry_run_does_not_start_controller(

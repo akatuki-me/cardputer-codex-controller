@@ -16,13 +16,13 @@ factory firmwareの退避・復元経路を確立してから、最小echo firmw
 
 app-server eventからhost state、device-link、実機SCR-HOMEまでの縦串を通します。
 
-状態: host runtimeと合成CardputerのSCR-HOME/RUN相当を完了。Production imageは書き込み済みで、起動画面と最初の実port openは未受入。
+状態: host runtime、production実機のHOME/RUN、G0 interrupt、stale/reconnect、full snapshot復帰を完了。
 
 ## M3 Safe approval E2E
 
 安全guard、pending queue、host response surface、deviceのaccept/decline/hold、interruptを統合します。この段階を実用MVPとします。
 
-状態: 合成CDCと実Codexでpending、host response、resolved、安全guardを完了。物理keyとproduction実機E2Eは未受入。
+状態: 実Codexとproduction実機でhost cancel、物理accept/decline/hold、accept禁止guard、複数pending、自動送りを完了。300ms早押し境界、長文scroll、high-risk表示は追加受入として残す。
 
 ## M4 Interaction
 
