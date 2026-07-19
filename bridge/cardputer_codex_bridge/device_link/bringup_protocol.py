@@ -11,7 +11,17 @@ BRINGUP_MODE = "m1-bringup"
 MAX_BRINGUP_HOST_BYTES = 4096
 MAX_BRINGUP_DEVICE_BYTES = 1024
 
-_DEVICE_TYPES = {"hello", "ready", "echo", "pong", "heartbeat", "key", "g0", "error"}
+_DEVICE_TYPES = {
+    "hello",
+    "ready",
+    "echo",
+    "pong",
+    "heartbeat",
+    "key",
+    "g0",
+    "stale",
+    "error",
+}
 _HOST_TYPES = {"hello", "echo", "ping"}
 
 
@@ -172,6 +182,8 @@ def _validate_device_message(message: JsonObject) -> None:
         if message.get("action") not in {"press", "short", "long", "release"}:
             raise BringupProtocolError("bringup g0 action is invalid")
         _integer(message, "heldMs")
+    elif message_type == "stale":
+        _integer(message, "silenceMs")
     elif message_type == "error" and not isinstance(message.get("kind"), str):
         raise BringupProtocolError("bringup error kind must be a string")
 

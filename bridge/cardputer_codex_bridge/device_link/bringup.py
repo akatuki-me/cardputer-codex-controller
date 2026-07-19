@@ -23,6 +23,10 @@ class BringupError(RuntimeError):
     """M1 bring-upが受入条件を満たさなかった。"""
 
 
+_MIN_STALE_SILENCE_MS = 5_500
+_MAX_STALE_SILENCE_MS = 6_000
+
+
 @dataclass(frozen=True)
 class EchoMeasurement:
     payload_bytes: int
@@ -76,9 +80,13 @@ class BringupSession:
         self._digit = threading.Event()
         self._g0_short = threading.Event()
         self._g0_long = threading.Event()
+        self._device_stale = threading.Event()
         self._echo_waiters: dict[int, _EchoWaiter] = {}
         self._ping_waiters: dict[int, _PingWaiter] = {}
         self._last_heap: int | None = None
+        self._host_output_paused = False
+        self._stale_measurement_active = False
+        self._stale_silence_ms: int | None = None
         self._link = SerialLink(
             port=port,
             provider=provider,
@@ -127,6 +135,26 @@ class BringupSession:
 
     def wait_g0_long(self, timeout: float) -> bool:
         return self._wait(self._g0_long, timeout)
+
+    def begin_stale_measurement(self) -> None:
+        with self._lock:
+            self._require_ready_locked()
+            self._device_stale.clear()
+            self._stale_silence_ms = None
+            self._stale_measurement_active = True
+            self._host_output_paused = True
+
+    def wait_device_stale(self, timeout: float) -> int:
+        if not self._wait(self._device_stale, timeout):
+            raise TimeoutError("device did not report stale before the deadline")
+        with self._lock:
+            if self._stale_silence_ms is None:
+                raise BringupError("device stale measurement is missing")
+            if self._stale_silence_ms < _MIN_STALE_SILENCE_MS:
+                raise BringupError("device reported stale before the configured boundary")
+            if self._stale_silence_ms > _MAX_STALE_SILENCE_MS:
+                raise BringupError("device stale transition exceeded six seconds")
+            return self._stale_silence_ms
 
     def wait_generation(self, generation: int, timeout: float) -> bool:
         deadline = time.monotonic() + timeout
@@ -237,7 +265,11 @@ class BringupSession:
             self._digit.clear()
             self._g0_short.clear()
             self._g0_long.clear()
+            self._device_stale.clear()
             self._last_heap = None
+            self._host_output_paused = False
+            self._stale_measurement_active = False
+            self._stale_silence_ms = None
             self._echo_waiters.clear()
             self._ping_waiters.clear()
             self._generation_condition.notify_all()
@@ -286,6 +318,15 @@ class BringupSession:
                 self._g0_short.set()
             elif action == "long":
                 self._g0_long.set()
+            return
+        if message_type == "stale":
+            silence_ms = message["silenceMs"]
+            assert isinstance(silence_ms, int) and not isinstance(silence_ms, bool)
+            with self._lock:
+                if self._stale_measurement_active and self._ready.is_set():
+                    self._stale_silence_ms = silence_ms
+                    self._ready.clear()
+                    self._device_stale.set()
             return
         if message_type == "error":
             with self._lock:
@@ -337,7 +378,7 @@ class BringupSession:
 
     def _periodic_ping(self) -> JsonObject | None:
         with self._lock:
-            if not self._ready.is_set():
+            if not self._ready.is_set() or self._host_output_paused:
                 return None
             return {
                 "t": "ping",
@@ -395,14 +436,16 @@ def run_bringup(
     synthetic_device: SyntheticSerialProvider | None = None,
     step_timeout: float = 30.0,
     input_timeout: float = 120.0,
+    stale_timeout: float = 8.0,
 ) -> None:
     stop = threading.Event()
+    request_synthetic_stale = threading.Event()
     driver_errors: list[type[BaseException]] = []
     driver: threading.Thread | None = None
     if synthetic_device is not None:
         driver = threading.Thread(
             target=_drive_synthetic_device,
-            args=(synthetic_device, stop, driver_errors),
+            args=(synthetic_device, stop, request_synthetic_stale, driver_errors),
             name="cardputer-bringup-fixture",
             daemon=True,
         )
@@ -456,6 +499,13 @@ def run_bringup(
         if not session.wait_g0_long(input_timeout):
             raise TimeoutError("bringup G0 long press was not observed")
         _pass(output, "g0_long")
+        session.begin_stale_measurement()
+        if synthetic_device is not None:
+            request_synthetic_stale.set()
+        stale_silence_ms = session.wait_device_stale(stale_timeout)
+        if synthetic_device is None:
+            output.write(f"stale_silence_ms {stale_silence_ms}\n")
+        _pass(output, "stale_within_6s")
     finally:
         session.close()
         stop.set()
@@ -484,6 +534,7 @@ def _write_hardware_measurements(
 def _drive_synthetic_device(
     provider: SyntheticSerialProvider,
     stop: threading.Event,
+    request_stale: threading.Event,
     errors: list[type[BaseException]],
 ) -> None:
     try:
@@ -503,6 +554,7 @@ def _drive_synthetic_device(
         )
         processed = 0
         input_sent = False
+        stale_sent = False
         last_heartbeat = 0.0
         while not stop.wait(0.002):
             messages = provider.decoded_host_messages()
@@ -546,6 +598,16 @@ def _drive_synthetic_device(
                         }
                     )
             processed = len(messages)
+            if request_stale.is_set() and not stale_sent:
+                device_sequence += 1
+                provider.inject(
+                    {
+                        "t": "stale",
+                        "seq": device_sequence,
+                        "silenceMs": 5_500,
+                    }
+                )
+                stale_sent = True
             now = time.monotonic()
             if input_sent and now - last_heartbeat >= 0.05:
                 device_sequence += 1

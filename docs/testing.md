@@ -18,6 +18,7 @@
 - M1診断で接続ごとにopaque sessionを更新し、host sequenceを1へresetする
 - M1診断で4 KiB echo、RTT、連続echo throughput、heartbeat/heapを測定する
 - M1診断で数字key、G0 499ms short、500ms longを識別する
+- M1診断でdevice報告のstale経過時間を使い、通常の`hello`と区別して6秒境界を判定する
 
 ## Protocol fixtures
 
@@ -27,7 +28,7 @@ fixtureは合成ID、相対path、架空workspace名だけを使用します。�
 
 `cardputer-codex-controller bringup --synthetic`はCodex非依存のM1診断経路を合成deviceで実行します。`bringup --port ... --dry-run`はproviderを生成せず、portを開きません。合成結果は診断protocolとhost harnessの証拠であり、board、keyboard、G0、USB CDCの実機PASSには昇格しません。
 
-Cardputer-Adv実機では診断firmware v0.1.1を用い、board、4 KiB echo、RTT、throughput、heap、stale表示、再接続、数字key、G0 short/longの機能を確認済みです。staleは6秒以内の計時が未完了であり、factory復元も未実施のため、M1 hardware gate全体は未充足です。実portの物理入力待ちは各event最大120秒です。
+Cardputer-Adv実機では診断firmware v0.1.3を用い、recovery-first復元、board、4 KiB echo、RTT、throughput、heap、再接続、数字key、G0 short/longを確認済みです。Staleはdevice自身が最後のhost受信から5,501 msを報告し、6秒以内をPASSしました。実portの物理入力待ちは各event最大120秒、stale event待ちは8秒ですが、合否はdevice報告値5,500〜6,000 msの範囲です。
 
 ## Hardware tests
 

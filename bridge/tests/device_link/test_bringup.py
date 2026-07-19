@@ -4,7 +4,9 @@ import io
 import time
 from collections.abc import Callable
 
+import pytest
 from cardputer_codex_bridge.device_link import (
+    BringupError,
     BringupSession,
     EchoMeasurement,
     SyntheticSerialProvider,
@@ -25,6 +27,7 @@ def test_synthetic_bringup_exercises_the_m1_acceptance_path() -> None:
         synthetic_device=provider,
         step_timeout=2.0,
         input_timeout=2.0,
+        stale_timeout=2.0,
     )
 
     result = output.getvalue()
@@ -41,6 +44,7 @@ def test_synthetic_bringup_exercises_the_m1_acceptance_path() -> None:
         "keyboard_digit",
         "g0_short",
         "g0_long",
+        "stale_within_6s",
         "bringup",
     ):
         assert f"{step} PASS\n" in result
@@ -120,6 +124,72 @@ def test_reconnect_rotates_session_and_resets_host_sequence() -> None:
         assert session.wait_ready(1.0)
     finally:
         session.close()
+
+
+def test_stale_measurement_ignores_hello_and_uses_device_elapsed_time() -> None:
+    provider = SyntheticSerialProvider()
+    session = _start_ready_session(provider)
+
+    try:
+        session.begin_stale_measurement()
+        provider.inject(_device_hello(sequence=3))
+        with pytest.raises(TimeoutError, match="device did not report stale"):
+            session.wait_device_stale(0.05)
+
+        provider.inject({"t": "stale", "seq": 4, "silenceMs": 6_000})
+        assert session.wait_device_stale(1.0) == 6_000
+    finally:
+        session.close()
+
+
+def test_stale_measurement_rejects_device_elapsed_time_over_six_seconds() -> None:
+    provider = SyntheticSerialProvider()
+    session = _start_ready_session(provider)
+
+    try:
+        session.begin_stale_measurement()
+        provider.inject({"t": "stale", "seq": 3, "silenceMs": 6_001})
+        with pytest.raises(BringupError, match="exceeded six seconds"):
+            session.wait_device_stale(1.0)
+    finally:
+        session.close()
+
+
+def test_stale_measurement_rejects_device_elapsed_time_before_firmware_boundary() -> None:
+    provider = SyntheticSerialProvider()
+    session = _start_ready_session(provider)
+
+    try:
+        session.begin_stale_measurement()
+        provider.inject({"t": "stale", "seq": 3, "silenceMs": 5_499})
+        with pytest.raises(BringupError, match="before the configured boundary"):
+            session.wait_device_stale(1.0)
+    finally:
+        session.close()
+
+
+def _start_ready_session(provider: SyntheticSerialProvider) -> BringupSession:
+    session = BringupSession(
+        port="synthetic",
+        provider=provider,
+        read_timeout=0.005,
+        ping_interval=1.0,
+        stale_after=3.0,
+        reconnect_delay=0.01,
+    )
+    session.start()
+    provider.wait_for_port(1)
+    provider.inject(_device_hello(sequence=1))
+    assert _wait_until(
+        lambda: len(provider.decoded_host_messages(port_number=1)) == 1,
+        timeout=1.0,
+    )
+    host_hello = provider.decoded_host_messages(port_number=1)[0]
+    host_session = host_hello["session"]
+    assert isinstance(host_session, str)
+    provider.inject(_device_ready(2, host_session))
+    assert session.wait_ready(1.0)
+    return session
 
 
 def _device_hello(sequence: int) -> dict[str, object]:

@@ -105,9 +105,9 @@ cardputer-codex-controller bringup --port-handle local-private/device-port.txt -
 - M0 Host app-server transport・thread/turn操作: 実装済み
 - Host controller合成デモ: 実装済み
 - Cardputer-Adv production firmware MVP: build・native fixture実装済み（production imageは実機未検証）
-- M1診断firmware・host bring-up harness: v0.1.1で実機機能を確認済み。recovery-first復元とstale 6秒以内の計時は未完了
+- M1診断firmware・host bring-up harness: v0.1.3でrecovery-first、実機機能、device計測のstale 6秒以内をPASS
 - M0 approval・multi-client・ADR: 継続中
-- 実機書き込み: M1診断firmware v0.1.1を機能確認済み、production imageは未実施
+- 実機書き込み: M1診断firmware v0.1.3を受入済み、production imageは未実施
 
 ## 免責
 

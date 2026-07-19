@@ -24,3 +24,5 @@ Host bridgeは実portを`--port`またはGit管理外のlocal handleで明示選
 ## Recovery first
 
 初回書き込み承認を求める前に、全flashを独立に2回読み出してsizeとSHA-256の一致を確認し、backupを保護し、手動download modeと復元commandを手順化します。承認後の最初の書き込みを照合済みbackup imageのwrite-backによる復元試験とし、factory firmwareの正常起動を確認してからecho firmwareへ進みます。Backupと実機IDは公開しません。
+
+初回の実施結果と公開可能な証拠は[M1 bring-up](m1/cardputer-bringup.md)へ記録します。

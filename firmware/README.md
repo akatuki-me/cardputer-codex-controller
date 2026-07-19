@@ -38,7 +38,7 @@ python -m platformio run -d firmware -e cardputer_adv_bringup
 生成物は`firmware/.pio/build/cardputer_adv_bringup/firmware.bin`です。このfirmwareは次だけを扱います。
 
 - `M5.getBoard()`によるCardputer-Adv判定
-- USB CDCのdevice hello、host hello、echo、ping/pong、heartbeat
+- USB CDCのdevice hello、host hello、echo、ping/pong、heartbeat、device計測のstale通知
 - printable keyboard eventとG0のpress・short・500ms long・release
 - free heap、受信数、送信数、error数
 

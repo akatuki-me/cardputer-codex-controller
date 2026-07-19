@@ -52,6 +52,19 @@ def test_new_decoder_accepts_device_sequence_reset_after_reconnect() -> None:
     assert second.feed(message) == [{"t": "pong", "seq": 1, "id": 1}]
 
 
+def test_decoder_accepts_device_measured_stale_silence() -> None:
+    message = b'{"t":"stale","seq":1,"silenceMs":5500}\n'
+
+    assert BringupDecoder().feed(message) == [
+        {"t": "stale", "seq": 1, "silenceMs": 5500}
+    ]
+
+
+def test_decoder_rejects_stale_without_device_elapsed_time() -> None:
+    with pytest.raises(BringupProtocolError, match="silenceMs"):
+        BringupDecoder().feed(b'{"t":"stale","seq":1}\n')
+
+
 def test_invalid_ready_identity_is_rejected() -> None:
     payload = json.dumps(
         {

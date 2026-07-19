@@ -90,6 +90,13 @@ void send_heartbeat(std::uint32_t now_ms) {
     send_message(message);
 }
 
+void send_stale(std::uint32_t silence_ms) {
+    JsonDocument message;
+    message["t"] = "stale";
+    message["silenceMs"] = silence_ms;
+    send_message(message);
+}
+
 void send_key(char key) {
     JsonDocument message;
     message["t"] = "key";
@@ -312,6 +319,7 @@ void loop() {
 
     if (linked && bringup_host_is_stale(now_ms, last_host_receive_ms)) {
         linked = false;
+        send_stale(now_ms - last_host_receive_ms);
         screen_dirty = true;
     }
     if (!linked && (now_ms - last_hello_ms) >= kHelloIntervalMs) {
