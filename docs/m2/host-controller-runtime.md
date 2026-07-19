@@ -9,6 +9,7 @@
 - controller-owned threadを`ephemeral=true`、`sandbox=read-only`、`approvalPolicy=on-request`で作成
 - 6 slot full snapshotを維持し、slot 1へcontroller-owned threadを明示割当
 - `turn/started`と`turn/completed`をSCR-HOME/RUN状態へ反映
+- app-server event threadとserial threadが共有するcontroller stateを単一同期境界で更新
 - focus中active turnだけを`turn/interrupt`へ転送
 - device `hello`後にhost `hello`とfull snapshotを送信し、再接続で再発行
 - host consoleから`run`、`wait`、`pending`、approval応答、`interrupt`、`quit`を操作

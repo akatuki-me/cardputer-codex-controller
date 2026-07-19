@@ -16,6 +16,8 @@ transportのJSON-RPC request IDは`AppServerClient`だけが採番・照合し�
 公開しない。`ThreadId`と`TurnId`は別の型で保持する。
 
 `turn/start`の成功responseまたは`turn/started`でactive turnを記録する。
+同じthreadで`turn/start`がpending中またはactive turnが存在する場合、次の`turn/start`は
+transport送信前に拒否し、既存active turnのtrackingを保持する。
 `turn/steer`と`turn/interrupt`は、指定したthreadとturnがactive turn台帳へ完全一致する場合
 だけ送信する。`turn/completed`は同じ組だけを閉じ、古いturnの遅延通知で新しいactive turnを
 消さない。start responseよりcompletionが先に処理される場合も、完了済みturnをactiveへ
@@ -68,6 +70,7 @@ prompt本文、model一覧、thread/turn ID、workspace path、生のnotificatio
 - 5 request methodの成功responseと`turn/started`、`turn/completed`
 - JSON-RPC request IDを整数で連番照合し、合成thread/turn IDと分離する
 - activeではないturnのinterruptを送信前に拒否する
+- pendingまたはactive turnがあるthreadへの追加`turn/start`を送信前に拒否する
 - stale completionが新しいactive turnを消さない
 - `turn/completed`の`inProgress`をprotocol errorにする
 - 空のmodel pageを正常に扱う
@@ -77,7 +80,6 @@ prompt本文、model一覧、thread/turn ID、workspace path、生のnotificatio
 ## 未検証
 
 - LinuxおよびmacOS上の実Codex CLI
-- 同じthreadに対する複数の同時`turn/start`
 - app-server再接続後のactive turn復元
 - model paginationの複数page実測
 

@@ -154,7 +154,7 @@ class DeviceControllerSession:
         return self._send_generated(lambda seq: self._state.snapshot(seq=seq))
 
     def _on_connected(self) -> None:
-        self._state.link_state = LinkState.STALE
+        self._state.set_link_state(LinkState.STALE)
         self._device_hello.clear()
         with self._handshake_lock:
             self._handshake_complete = False
@@ -163,7 +163,7 @@ class DeviceControllerSession:
             self._sequence = 0
 
     def _on_stale(self) -> None:
-        self._state.link_state = LinkState.STALE
+        self._state.set_link_state(LinkState.STALE)
         with self._handshake_lock:
             self._handshake_complete = False
 
@@ -186,9 +186,9 @@ class DeviceControllerSession:
                     }
                 ):
                     raise OSError("initial device-link snapshot could not be sent")
-                self._state.link_state = LinkState.ACTIVE
+                self._state.set_link_state(LinkState.ACTIVE)
                 if not self._send_generated(lambda seq: self._state.snapshot(seq=seq)):
-                    self._state.link_state = LinkState.STALE
+                    self._state.set_link_state(LinkState.STALE)
                     raise OSError("initial device-link snapshot could not be sent")
                 self._handshake_complete = True
             ready_handler = self._ready_handler

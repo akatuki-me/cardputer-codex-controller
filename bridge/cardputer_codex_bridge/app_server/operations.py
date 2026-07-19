@@ -104,6 +104,10 @@ class AppServerOperations:
         with self._turn_lock:
             if thread_id in self._starting_threads:
                 raise AppServerStateError("turn/start is already pending for this thread")
+            if thread_id in self._active_turns:
+                raise AppServerStateError(
+                    "turn/start requires no active turn for this thread"
+                )
             self._starting_threads.add(thread_id)
         try:
             result = self._client.request("turn/start", params, timeout=timeout)

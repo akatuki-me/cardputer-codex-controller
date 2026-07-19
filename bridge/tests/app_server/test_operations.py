@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import cast
 
 import pytest
 from cardputer_codex_bridge.app_server import (
@@ -10,6 +11,7 @@ from cardputer_codex_bridge.app_server import (
     AppServerOperations,
     AppServerProtocolError,
     AppServerResponseError,
+    AppServerStateError,
     ClientInfo,
     ThreadStartOptions,
 )
@@ -134,6 +136,39 @@ def test_stale_completion_does_not_clear_a_newer_active_turn() -> None:
 
     assert event is not None
     assert event.matched_active_turn is False
+    assert operations.active_turn(thread_id) == active_turn
+
+
+def test_start_turn_rejects_an_existing_active_turn_before_transport() -> None:
+    class RecordingClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def request(
+            self,
+            method: str,
+            params: object,
+            *,
+            timeout: float | None = None,
+        ) -> object:
+            self.calls += 1
+            return {
+                "turn": {
+                    "id": "turn-synthetic-2",
+                    "status": "completed",
+                }
+            }
+
+    client = RecordingClient()
+    operations = AppServerOperations(cast(AppServerClient, client))
+    thread_id = ThreadId("thread-synthetic-1")
+    active_turn = TurnId("turn-synthetic-1")
+    operations._active_turns[thread_id] = active_turn
+
+    with pytest.raises(AppServerStateError, match="requires no active turn"):
+        operations.start_turn(thread_id, "Synthetic second input")
+
+    assert client.calls == 0
     assert operations.active_turn(thread_id) == active_turn
 
 

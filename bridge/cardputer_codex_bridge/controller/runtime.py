@@ -112,15 +112,15 @@ class _EventPump:
         approval_event = self._coordinator.handle_message(message)
         if isinstance(approval_event, (CommandApprovalRequest, FileChangeApprovalRequest)):
             if approval_event.thread_id == self._thread_id:
-                self._state.slots[0].attention_kind = "approval"
+                self._state.set_attention(0, "approval")
                 self._session.send_snapshot()
             self._emit(self._console.render())
             return
         if isinstance(approval_event, ApprovalResolved):
             if approval_event.request.thread_id == self._thread_id:
                 has_thread_approval = any(item.slot == 1 for item in self._coordinator.pending)
-                if not has_thread_approval and self._state.slots[0].turn_id is not None:
-                    self._state.slots[0].attention_kind = None
+                if not has_thread_approval:
+                    self._state.set_attention(0, None, require_active=True)
                 self._session.send_snapshot()
             self._emit(self._console.render())
             return
@@ -206,8 +206,11 @@ def run_controller(
         emit("controller_thread PASS\n")
 
         state = ControllerState()
-        state.slots[0].label = checked_label
-        state.slots[0].thread_id = str(controller_thread.thread_id)
+        state.configure_slot(
+            0,
+            label=checked_label,
+            thread_id=str(controller_thread.thread_id),
+        )
         session = DeviceControllerSession(
             state=state,
             adapter=_OperationsInterruptAdapter(operations, emit),
