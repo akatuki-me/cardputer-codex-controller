@@ -1,0 +1,60 @@
+# M3 safe approval E2E
+
+## 目的
+
+App-server request、host pending正本、device表示、host/device response、`serverRequest/resolved`を一つのlifecycleへ統合し、不完全または危険な内容をdeviceからacceptできないようにします。
+
+## 実装契約
+
+- JSON-RPC request IDはhostだけが保持し、deviceには短い`deviceApprovalId`だけを送る
+- Pendingは受信順に保持し、deviceには先頭の表示可能な1件と残件数を送る
+- Response送信後もresolvedまではpendingと`sending`を維持する
+- 同一IDの再送で300ms guard、scroll、最下端到達、選択、sendingを維持する
+- `contentComplete=false`または`riskClass=high`ではdevice acceptを削除する
+- Server提示decisionを上限とし、`decline`と`cancel`を変換しない
+- Hostが追加semantic contextを完全表示できないrequestではhost acceptも禁止する
+- 再接続時はpending正本からfull approval snapshotを再発行する
+
+## 実Codex受入
+
+Codex CLI 0.144.6の実command approvalでは、文字列decisionとamendment objectを含む`availableDecisions`、command action、environment、amendment関連fieldを受信しました。追加contextを完全表示できないためdeviceへacceptを出さずhost-onlyとし、server提示の`cancel`を応答しました。
+
+受入結果はrequest受信、pending表示、response、resolved、turn完了、対象書き込み未発生、app-server終了コード0です。公開証拠にはID、command、cwd、prompt、model、port、生logを含めません。
+
+## Test coverage
+
+- low-risk accept/declineと二重応答拒否
+- recursive delete、force push、sudo等のhigh-risk分類
+- UTF-8 byte単位の8行切り詰めとhost原文保持
+- 複数pendingの残数更新、自動送り、再接続復元
+- host responseとdevice responseの同一pending正本
+- server提示cancelと追加semantic context時のhost accept禁止
+- device-linkのapproval、sending、resolved往復
+- approval待ちで`wait`がREPLへ戻ることと、待機上限でsessionを終了しないこと
+- Cardputer Enter special-key stateによるresponse確定
+
+## 2026-07-19 validation
+
+- publication boundary: PASS
+- Ruff: PASS
+- mypy: 30 source files PASS
+- pytest: 149 passed、2 skipped
+- Python sdist/wheel build: PASS
+- Firmware native fixture: 18/18 PASS
+- `cardputer_adv` build: PASS、RAM 32,260 bytes、Flash 482,185 bytes
+- `cardputer_adv_bringup` build: PASS、RAM 26,716 bytes、Flash 461,917 bytes
+- 実Codex 0.144.6 + 合成device turn lifecycle: PASS
+- 実Codex 0.144.6 approval host-only + cancel + resolved: PASS
+- Production書き込み前の全8 MiB二重backup: size・SHA-256一致
+- Production firmware upload: PASS、全書き込み領域のhash verification完了
+- Production実機 + 実CodexのHOME/RUN、host-only cancel、G0 interrupt: PASS
+- Incomplete file approvalのlocal hold、accept禁止、物理decline、対象書き込み未発生: PASS
+- 完全なlow-risk fixtureの物理accept、複数pending残数、自動送り、2件目decline、pending zero: PASS
+- Controller終了後のstaleとnew host session/full snapshotによる再接続: PASS
+- Stale状態からactive/full snapshot: 1,766ms、6秒以内をPASS
+
+Production firmwareの書き込み、自動reset、最初の実port open、実Codex controller E2Eまで完了しています。実測で検出したEnter special-key判定と`wait`のapproval/timeout復帰を修正し、再書き込み後に物理操作を再受入しました。
+
+## 未検証境界
+
+300ms guard境界の早押し、5行以上の本文を最下端までscrollする操作、high-risk表示の物理確認、長時間運転は未受入です。合成PASSをこれらの実機PASSとして扱いません。

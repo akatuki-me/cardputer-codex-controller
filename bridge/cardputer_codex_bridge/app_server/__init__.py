@@ -1,5 +1,6 @@
-from .client import AppServerClient, codex_app_server_command
+from .client import SUPPORTED_CODEX_VERSIONS, AppServerClient, codex_app_server_command
 from .errors import (
+    ActiveTurnRequiredError,
     AppServerClosedError,
     AppServerError,
     AppServerProtocolError,
@@ -10,18 +11,22 @@ from .errors import (
     AppServerTimeoutError,
     AppServerVersionMismatch,
 )
+from .operations import AppServerOperations, ThreadStartOptions
 from .types import (
     AppServerState,
     ClientInfo,
     InitializeResult,
     JsonObject,
     JsonValue,
+    RequestId,
     ShutdownResult,
     StderrSummary,
 )
 
 __all__ = [
+    "ActiveTurnRequiredError",
     "AppServerClient",
+    "AppServerOperations",
     "AppServerClosedError",
     "AppServerError",
     "AppServerProtocolError",
@@ -36,7 +41,10 @@ __all__ = [
     "InitializeResult",
     "JsonObject",
     "JsonValue",
+    "RequestId",
     "ShutdownResult",
+    "SUPPORTED_CODEX_VERSIONS",
     "StderrSummary",
+    "ThreadStartOptions",
     "codex_app_server_command",
 ]

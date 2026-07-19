@@ -38,7 +38,9 @@ Effort候補は現在modelに対応する`model/list.data[].supportedReasoningEf
 ## Interaction rules
 
 - 選択肢と定型返信は選択後にEnterで確定する。
-- BtnAの500ms長押しは、表示画面ではなくfocus中slotの`turnActive`でinterrupt対象を決める。
+- Approvalは`0`でlocal hold、`a`でaccept、`d`でdeclineを選び、Enter special-key stateで確定する。
+- Approval本文は`j` / `k`で下 / 上へscrollする。
+- G0の500ms長押しは、表示画面ではなくfocus中slotの`turnActive`でinterrupt対象を決める。
 - app-serverの構造化質問は初期版でdeviceから回答しない。
 - `acceptForSession`、`cancel`、policy amendmentはhost側だけで扱う。
 - pendingの正本はhostがID順に保持し、deviceには先頭1件と残数を表示する。
@@ -47,6 +49,6 @@ Effort候補は現在modelに対応する`model/list.data[].supportedReasoningEf
 
 Deviceで`0`を選ぶ保留はrequestを解決せず、host bridgeのpending queueへ残します。Bridgeは未解決のapproval、構造化質問、deviceで保留した項目を、ID、slot、種別、要約、経過時間、`contentComplete`、`riskClass`とともに常時表示します。
 
-初期版は`approve <id>`、`decline <id> [reason]`、`answer <id> <text>`の最小操作面を提供します。Deviceで扱わない`acceptForSession`、`cancel`、policy amendment、構造化質問、切り詰めまたはhigh-risk approvalのacceptはhostで全文と原requestを確認して扱います。
+初期版は`approve <id>`、`decline <id>`、`cancel <id>`のapproval操作面を提供します。Serverが提示したdecisionだけを同名で送り、semantic contextを完全表示できない場合はhostでもapproveを出しません。`answer <id> <text>`、`acceptForSession`、policy amendment、構造化質問はM4のhost surface拡張で扱います。Deviceで禁止された切り詰めまたはhigh-risk approvalのacceptは、hostが原requestを完全表示できる場合だけ提供します。
 
 Deviceまたはhostのどちらで解決しても同じpending正本を更新し、`serverRequest/resolved`を受けて他方の表示を追従させます。受入試験では「deviceで保留 → host queueに表示 → hostで応答 → deviceがresolvedへ追従」を一連で確認します。
