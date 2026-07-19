@@ -34,6 +34,6 @@ cardputer-codex-controller bringup --synthetic
 cardputer-codex-controller e2e --synthetic
 ```
 
-`SerialLink`はprovider injectionによりpyserialと合成transportを切り替えます。read threadでNDJSONを受信し、2秒周期の`ping`、6秒のstale判定、再接続時の`hello`とfull snapshot再送を行います。合成E2Eでは実Codexのactive turnへdevice `interrupt`を一度だけ転送し、実serial I/Oは行いません。
+`SerialLink`はprovider injectionによりpyserialと合成transportを切り替えます。read threadでNDJSONを受信し、handshake後の2秒周期`ping`、6秒のstale判定、再接続時のopaque session付き`hello`とfull snapshot再送を行います。合成E2Eでは実Codexのactive turnへ、slotと`turnId`が一致するdevice `interrupt`を一度だけ転送し、実serial I/Oは行いません。
 
 実portは`--port`またはGit管理外の`--port-handle`でだけ選択できます。`--dry-run`ではportを開かず、Codexも起動しません。pyserial providerはhardware flow controlを無効化し、DTR/RTSを個別に操作しません。

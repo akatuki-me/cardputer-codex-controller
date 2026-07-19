@@ -2,7 +2,9 @@
 
 ## Version policy
 
-初期実装はCodex CLI 0.144.5へ固定します。別versionへ更新するときはschemaを別directoryへ生成し、差分reviewとcontract testを行います。
+初期実装はschemaを照合済みのCodex CLI 0.144.5および0.144.6だけを受け入れます。別versionへ更新するときはschemaを別directoryへ生成し、差分reviewとcontract testを行います。
+
+0.144.6では本bridgeが使用するcommand/file approval responseとfile approval paramsが0.144.5とbyte単位で一致し、command approval paramsの差分は`threadId`と`turnId`のproperty順だけでした。この確認に基づきpatch versionを追加し、それ以外のversionは引き続きinitialize時に拒否します。
 
 ## Connection
 

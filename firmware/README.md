@@ -7,7 +7,7 @@ Cardputer-Adv向けdevice-link v1 firmwareです。PlatformIOとArduino framewor
 - 240×135の`SCR-HOME`、`SCR-RUN`、`SCR-APPROVE`
 - 6 slotのfull snapshotと単調増加`seq`
 - `hello`、`state`、`approval`、`approval_resolved`、`toast`、`ping`
-- 500msのBtnA長押しによるfocus中slotの`interrupt`
+- 500msのG0長押しによるfocus中slotの`interrupt`
 - host→device 4096 byte、device→host 1024 byteの固定上限
 - 最大host line 2本分を保持する8192 byteのUSB CDC RX queue
 - partial line、multiple line、invalid UTF-8、oversize line、未知`t`の安全な処理

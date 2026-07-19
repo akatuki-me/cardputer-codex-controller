@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
+from cardputer_codex_bridge.app_server.types import JsonObject
 from cardputer_codex_bridge.controller import (
     ControllerState,
     DeviceControllerSession,
@@ -40,18 +41,24 @@ def test_session_sends_hello_full_snapshot_and_forwards_interrupt_once() -> None
         provider=provider,
         port="synthetic",
         read_timeout=0.01,
-        ping_interval=1.0,
-        stale_after=3.0,
+        ping_interval=0.03,
+        stale_after=0.15,
         reconnect_delay=0.01,
     )
 
     session.start()
     try:
         provider.wait_for_port()
+        time.sleep(0.08)
+        assert state.link_state is LinkState.STALE
         assert provider.decoded_host_messages() == []
         provider.inject({"t": "hello", "seq": 1, "proto": 1})
-        provider.inject({"t": "interrupt", "seq": 2})
-        provider.inject({"t": "interrupt", "seq": 3})
+        provider.inject(
+            {"t": "interrupt", "seq": 2, "slot": 1, "turnId": "turn-synthetic"}
+        )
+        provider.inject(
+            {"t": "interrupt", "seq": 3, "slot": 1, "turnId": "turn-synthetic"}
+        )
 
         assert session.wait_for_device_hello(1.0)
         assert session.wait_for_interrupt_messages(2, 1.0)
@@ -61,10 +68,16 @@ def test_session_sends_hello_full_snapshot_and_forwards_interrupt_once() -> None
         host_messages = provider.decoded_host_messages()
         assert host_messages[0]["t"] == "hello"
         assert host_messages[0]["proto"] == 1
+        assert isinstance(host_messages[0]["session"], str)
+        assert host_messages[0]["session"]
+        assert host_messages[0]["seq"] == 1
         assert host_messages[1]["t"] == "state"
+        assert host_messages[1]["seq"] == 2
         assert host_messages[1]["full"] is True
         assert len(host_messages[1]["slots"]) == 6
-        assert len(host_messages) == 2
+        assert state.link_state is LinkState.ACTIVE
+        assert sum(message["t"] == "hello" for message in host_messages) == 1
+        assert sum(message["t"] == "state" for message in host_messages) == 1
     finally:
         session.close()
 
@@ -90,17 +103,77 @@ def test_disconnect_reconnects_and_resends_a_full_snapshot() -> None:
         first = provider.wait_for_port(1)
         provider.inject({"t": "hello", "seq": 20, "proto": 1}, port_number=1)
         assert session.wait_for_device_hello(1.0)
+        first_messages = provider.decoded_host_messages(port_number=1)
         first.disconnect()
 
         provider.wait_for_port(2)
         provider.inject({"t": "hello", "seq": 1, "proto": 1}, port_number=2)
-        provider.inject({"t": "interrupt", "seq": 2}, port_number=2)
+        provider.inject(
+            {"t": "interrupt", "seq": 2, "slot": 1, "turnId": "turn-reconnect"},
+            port_number=2,
+        )
         assert session.wait_for_interrupt(1.0)
         assert adapter.calls == [("thread-reconnect", "turn-reconnect")]
         reconnect_messages = provider.decoded_host_messages(port_number=2)
         assert [message["t"] for message in reconnect_messages[:2]] == ["hello", "state"]
+        assert first_messages[0]["session"] != reconnect_messages[0]["session"]
+        assert [message["seq"] for message in reconnect_messages[:2]] == [1, 2]
         assert reconnect_messages[1]["full"] is True
         assert reconnect_messages[1]["linkState"] == "active"
+    finally:
+        session.close()
+
+
+def test_snapshot_sequence_and_write_order_are_serialized() -> None:
+    class BlockingSnapshotState(ControllerState):
+        def __init__(self) -> None:
+            super().__init__()
+            self.block_next = False
+            self.entered = threading.Event()
+            self.release = threading.Event()
+
+        def snapshot(self, *, seq: int) -> JsonObject:
+            if self.block_next:
+                self.block_next = False
+                self.entered.set()
+                self.release.wait(timeout=1.0)
+            return super().snapshot(seq=seq)
+
+    provider = SyntheticSerialProvider()
+    state = BlockingSnapshotState()
+    session = DeviceControllerSession(
+        state=state,
+        adapter=RecordingAdapter(),
+        provider=provider,
+        port="synthetic",
+        read_timeout=0.005,
+        ping_interval=1.0,
+        stale_after=3.0,
+        reconnect_delay=0.01,
+    )
+
+    session.start()
+    try:
+        provider.wait_for_port()
+        provider.inject({"t": "hello", "seq": 1, "proto": 1})
+        assert session.wait_for_device_hello(1.0)
+        state.block_next = True
+        first = threading.Thread(target=session.send_snapshot)
+        second = threading.Thread(target=session.send_snapshot)
+        first.start()
+        assert state.entered.wait(1.0)
+        second.start()
+        time.sleep(0.03)
+        state.release.set()
+        first.join(timeout=1.0)
+        second.join(timeout=1.0)
+
+        sequences = [
+            message["seq"]
+            for message in provider.decoded_host_messages()
+            if message["t"] == "state"
+        ]
+        assert sequences == sorted(sequences)
     finally:
         session.close()
 
@@ -133,6 +206,46 @@ def test_ping_is_sent_and_pong_keeps_the_link_active() -> None:
         time.sleep(0.05)
         assert session.active is True
         assert provider.open_count == 1
+    finally:
+        session.close()
+
+
+def test_interrupt_requires_selected_slot_and_current_turn_id() -> None:
+    provider = SyntheticSerialProvider()
+    state = ControllerState()
+    adapter = RecordingAdapter()
+    state.turn_started(0, thread_id="thread-current", turn_id="turn-current")
+    session = DeviceControllerSession(
+        state=state,
+        adapter=adapter,
+        provider=provider,
+        port="synthetic",
+        read_timeout=0.005,
+        ping_interval=1.0,
+        stale_after=3.0,
+        reconnect_delay=0.01,
+    )
+
+    session.start()
+    try:
+        provider.wait_for_port()
+        provider.inject({"t": "hello", "seq": 1, "proto": 1})
+        assert session.wait_for_device_hello(1.0)
+        provider.inject({"t": "interrupt", "seq": 2})
+        provider.inject(
+            {"t": "interrupt", "seq": 3, "slot": 2, "turnId": "turn-current"}
+        )
+        provider.inject(
+            {"t": "interrupt", "seq": 4, "slot": 1, "turnId": "turn-old"}
+        )
+        time.sleep(0.05)
+        assert adapter.calls == []
+
+        provider.inject(
+            {"t": "interrupt", "seq": 5, "slot": 1, "turnId": "turn-current"}
+        )
+        assert session.wait_for_interrupt(1.0)
+        assert adapter.calls == [("thread-current", "turn-current")]
     finally:
         session.close()
 

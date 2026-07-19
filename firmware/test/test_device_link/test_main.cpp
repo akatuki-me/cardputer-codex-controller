@@ -26,10 +26,14 @@ DispatchAction dispatch(DeviceLinkDispatcher& dispatcher, const char* message, s
 }
 
 void make_ready(ControllerState& state, DeviceLinkDispatcher& dispatcher) {
-    dispatch(dispatcher, R"({"t":"hello","seq":0,"proto":1})", 100);
     dispatch(
         dispatcher,
-        R"({"t":"state","seq":1,"full":true,"selectedSlot":1,"serviceState":"ready","slots":[{"slot":1,"label":"slot-1","status":"run","turnActive":true,"turnId":"turn-1","attentionKind":null}]})",
+        R"({"t":"hello","seq":1,"proto":1,"session":"session-a"})",
+        100
+    );
+    dispatch(
+        dispatcher,
+        R"({"t":"state","seq":2,"full":true,"selectedSlot":1,"serviceState":"ready","slots":[{"slot":1,"label":"slot-1","status":"run","turnActive":true,"turnId":"turn-1","attentionKind":null}]})",
         100
     );
     TEST_ASSERT_TRUE(state.can_send());
@@ -83,6 +87,11 @@ void test_invalid_utf8_and_oversize_are_dropped() {
 void test_unknown_type_advances_sequence_and_old_state_is_ignored() {
     ControllerState state;
     DeviceLinkDispatcher dispatcher(state);
+    dispatch(
+        dispatcher,
+        R"({"t":"hello","seq":1,"proto":1,"session":"session-a"})",
+        10
+    );
     dispatch(dispatcher, R"({"t":"future","seq":5})", 10);
     dispatch(
         dispatcher,
@@ -125,7 +134,11 @@ void test_state_keeps_four_safety_axes_and_stale_locks_send() {
 void test_service_not_ready_locks_interrupt() {
     ControllerState state;
     DeviceLinkDispatcher dispatcher(state);
-    dispatch(dispatcher, R"({"t":"hello","seq":1,"proto":1})", 50);
+    dispatch(
+        dispatcher,
+        R"({"t":"hello","seq":1,"proto":1,"session":"session-a"})",
+        50
+    );
     dispatch(
         dispatcher,
         R"({"t":"state","seq":2,"serviceState":"down","slots":[{"slot":1,"turnActive":true,"turnId":"turn-1"}]})",
@@ -139,7 +152,17 @@ void test_service_not_ready_locks_interrupt() {
 void test_ping_requests_pong() {
     ControllerState state;
     DeviceLinkDispatcher dispatcher(state);
-    const DispatchAction action = dispatch(dispatcher, R"({"t":"ping","seq":0})", 10);
+    DispatchAction action = dispatch(dispatcher, R"({"t":"ping","seq":1})", 10);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(DispatchAction::None),
+        static_cast<std::uint8_t>(action)
+    );
+    dispatch(
+        dispatcher,
+        R"({"t":"hello","seq":1,"proto":1,"session":"session-a"})",
+        20
+    );
+    action = dispatch(dispatcher, R"({"t":"ping","seq":2})", 30);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<std::uint8_t>(DispatchAction::SendPong),
         static_cast<std::uint8_t>(action)
@@ -152,7 +175,7 @@ void test_accept_requires_guard_end_and_matching_id() {
     make_ready(state, dispatcher);
     dispatch(
         dispatcher,
-        R"({"t":"approval","seq":2,"deviceApprovalId":"approval-1","slot":1,"kind":"command","lines":["one","two","three","four"],"decisions":["accept","decline"],"contentComplete":true,"riskClass":"normal","pendingCount":0})",
+        R"({"t":"approval","seq":3,"deviceApprovalId":"approval-1","slot":1,"kind":"command","lines":["one","two","three","four"],"decisions":["accept","decline"],"contentComplete":true,"riskClass":"normal","pendingCount":0})",
         1000
     );
 
@@ -169,7 +192,7 @@ void test_high_risk_and_incomplete_never_offer_accept() {
     make_ready(high_risk, high_dispatcher);
     dispatch(
         high_dispatcher,
-        R"({"t":"approval","seq":2,"deviceApprovalId":"high","lines":["full"],"decisions":["accept","decline"],"contentComplete":true,"riskClass":"high"})",
+        R"({"t":"approval","seq":3,"deviceApprovalId":"high","lines":["full"],"decisions":["accept","decline"],"contentComplete":true,"riskClass":"high"})",
         100
     );
     TEST_ASSERT_FALSE(high_risk.approval().accept_offered);
@@ -180,7 +203,7 @@ void test_high_risk_and_incomplete_never_offer_accept() {
     make_ready(incomplete, incomplete_dispatcher);
     dispatch(
         incomplete_dispatcher,
-        R"({"t":"approval","seq":2,"deviceApprovalId":"cut","lines":["partial"],"decisions":["accept","decline"],"contentComplete":false,"riskClass":"normal"})",
+        R"({"t":"approval","seq":3,"deviceApprovalId":"cut","lines":["partial"],"decisions":["accept","decline"],"contentComplete":false,"riskClass":"normal"})",
         100
     );
     TEST_ASSERT_FALSE(incomplete.approval().accept_offered);
@@ -193,21 +216,68 @@ void test_resolved_requires_matching_id() {
     make_ready(state, dispatcher);
     dispatch(
         dispatcher,
-        R"({"t":"approval","seq":2,"deviceApprovalId":"approval-1","lines":[],"decisions":["decline"],"contentComplete":true,"riskClass":"normal"})",
+        R"({"t":"approval","seq":3,"deviceApprovalId":"approval-1","lines":[],"decisions":["decline"],"contentComplete":true,"riskClass":"normal"})",
         100
     );
     dispatch(
         dispatcher,
-        R"({"t":"approval_resolved","seq":3,"deviceApprovalId":"other"})",
+        R"({"t":"approval_resolved","seq":4,"deviceApprovalId":"other"})",
         200
     );
     TEST_ASSERT_TRUE(state.approval().active);
     dispatch(
         dispatcher,
-        R"({"t":"approval_resolved","seq":4,"deviceApprovalId":"approval-1"})",
+        R"({"t":"approval_resolved","seq":5,"deviceApprovalId":"approval-1"})",
         300
     );
     TEST_ASSERT_FALSE(state.approval().active);
+}
+
+void test_new_host_session_resets_sequence_and_stale_approval() {
+    ControllerState state;
+    DeviceLinkDispatcher dispatcher(state);
+    dispatch(
+        dispatcher,
+        R"({"t":"hello","seq":10,"proto":1,"session":"session-a"})",
+        100
+    );
+    dispatch(
+        dispatcher,
+        R"({"t":"state","seq":11,"serviceState":"ready","slots":[]})",
+        100
+    );
+    dispatch(
+        dispatcher,
+        R"({"t":"approval","seq":12,"deviceApprovalId":"old","lines":[],"decisions":["decline"],"contentComplete":true,"riskClass":"normal"})",
+        100
+    );
+    TEST_ASSERT_TRUE(state.approval().active);
+
+    dispatch(
+        dispatcher,
+        R"({"t":"hello","seq":1,"proto":1,"session":"session-b"})",
+        200
+    );
+    TEST_ASSERT_EQUAL_UINT32(1, state.last_sequence());
+    TEST_ASSERT_EQUAL_STRING("session-b", state.host_session());
+    TEST_ASSERT_FALSE(state.approval().active);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<std::uint8_t>(ServiceState::Initializing),
+        static_cast<std::uint8_t>(state.service_state())
+    );
+
+    dispatch(
+        dispatcher,
+        R"({"t":"state","seq":2,"serviceState":"ready","slots":[]})",
+        210
+    );
+    dispatch(
+        dispatcher,
+        R"({"t":"hello","seq":1,"proto":1,"session":"session-b"})",
+        220
+    );
+    TEST_ASSERT_EQUAL_UINT32(2, state.last_sequence());
+    TEST_ASSERT_EQUAL_UINT32(1, state.counters().old_sequence);
 }
 
 void test_bringup_line_receiver_accepts_4096_and_rejects_4097_bytes() {
@@ -338,6 +408,7 @@ int main(int, char**) {
     RUN_TEST(test_accept_requires_guard_end_and_matching_id);
     RUN_TEST(test_high_risk_and_incomplete_never_offer_accept);
     RUN_TEST(test_resolved_requires_matching_id);
+    RUN_TEST(test_new_host_session_resets_sequence_and_stale_approval);
     RUN_TEST(test_bringup_line_receiver_accepts_4096_and_rejects_4097_bytes);
     RUN_TEST(test_usb_rx_buffers_cover_two_maximum_host_lines);
     RUN_TEST(test_bringup_session_resets_sequence_only_for_a_new_session);

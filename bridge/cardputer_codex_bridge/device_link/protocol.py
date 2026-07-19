@@ -86,6 +86,10 @@ def encode_message(message: JsonObject) -> bytes:
     if message_type not in _HOST_TO_DEVICE_TYPES:
         raise DeviceLinkProtocolError("host-to-device message t is not supported")
     _validate_known_message(message)
+    if message_type == "hello":
+        session = message.get("session")
+        if not isinstance(session, str) or not session or len(session) > 64:
+            raise DeviceLinkProtocolError("device-link host hello session is invalid")
     encoded = json.dumps(message, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     payload = encoded.encode("utf-8")
     if len(payload) > MAX_HOST_TO_DEVICE_BYTES:

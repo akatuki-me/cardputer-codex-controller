@@ -35,6 +35,7 @@ from .types import (
 )
 
 _CODEX_VERSION_PATTERN = re.compile(r"/(?P<version>\d+\.\d+\.\d+)(?:[ )]|$)")
+SUPPORTED_CODEX_VERSIONS = ("0.144.5", "0.144.6")
 _INHERITED_ENV_NAMES = {
     "APPDATA",
     "CODEX_HOME",
@@ -117,7 +118,7 @@ class AppServerClient:
         self,
         *,
         command: Sequence[str],
-        expected_codex_version: str = "0.144.5",
+        expected_codex_versions: Sequence[str] = SUPPORTED_CODEX_VERSIONS,
         request_timeout: float = 10.0,
         shutdown_timeout: float = 2.0,
         cwd: str | Path | None = None,
@@ -128,9 +129,12 @@ class AppServerClient:
             raise ValueError("command must contain non-empty arguments")
         if request_timeout <= 0 or shutdown_timeout <= 0:
             raise ValueError("timeouts must be positive")
+        checked_versions = tuple(expected_codex_versions)
+        if not checked_versions or any(not version for version in checked_versions):
+            raise ValueError("expected_codex_versions must contain non-empty versions")
 
         self._command = tuple(command)
-        self._expected_codex_version = expected_codex_version
+        self._expected_codex_versions = checked_versions
         self._request_timeout = request_timeout
         self._shutdown_timeout = shutdown_timeout
         self._cwd = cwd
@@ -513,9 +517,9 @@ class AppServerClient:
         if match is None:
             raise AppServerProtocolError("initialize userAgent has no Codex version")
         codex_version = match.group("version")
-        if codex_version != self._expected_codex_version:
+        if codex_version not in self._expected_codex_versions:
             raise AppServerVersionMismatch(
-                expected=self._expected_codex_version,
+                expected=", ".join(self._expected_codex_versions),
                 actual=codex_version,
             )
         return InitializeResult(

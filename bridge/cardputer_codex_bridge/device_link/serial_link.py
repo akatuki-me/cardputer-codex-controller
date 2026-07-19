@@ -129,11 +129,18 @@ class SerialLink:
         return self._active.wait(timeout)
 
     def send(self, message: JsonObject) -> bool:
-        payload = self._encoder(message)
+        return self.send_generated(lambda: message)
+
+    def send_generated(self, factory: Callable[[], JsonObject | None]) -> bool:
+        """採番を含むmessage生成とwriteを同じlock内で直列化する。"""
         with self._write_lock, self._connection_lock:
             connection = self._connection
             if connection is None or not self._active.is_set():
                 return False
+            message = factory()
+            if message is None:
+                return True
+            payload = self._encoder(message)
             written = connection.write(payload)
             if written is not None and written != len(payload):
                 raise OSError("serial write was incomplete")
@@ -180,8 +187,7 @@ class SerialLink:
                         for message in decoder.feed(chunk):
                             self._on_message(message)
                     if now >= next_ping:
-                        ping = self._ping_factory()
-                        if ping is not None and not self.send(ping):
+                        if not self.send_generated(self._ping_factory):
                             raise OSError("serial link became unavailable")
                         next_ping = now + self._ping_interval
                     if now - last_received >= self._stale_after:

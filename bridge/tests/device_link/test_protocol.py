@@ -67,6 +67,11 @@ def test_hello_requires_protocol_version_one() -> None:
         DeviceLinkDecoder().feed(b'{"t":"hello","seq":1,"proto":2}\n')
 
 
+def test_host_hello_requires_an_opaque_session() -> None:
+    with pytest.raises(DeviceLinkProtocolError, match="session"):
+        encode_message({"t": "hello", "seq": 1, "proto": 1, "host": "bridge"})
+
+
 def test_host_encoder_rejects_device_to_host_type() -> None:
     with pytest.raises(DeviceLinkProtocolError, match="not supported"):
         encode_message({"t": "interrupt", "seq": 1})

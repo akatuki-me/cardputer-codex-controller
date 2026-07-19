@@ -173,8 +173,12 @@ def run_serial_e2e(
         )
         _pass(output, "turn_steer")
         if synthetic_device is not None:
-            synthetic_device.inject({"t": "interrupt", "seq": 2})
-            synthetic_device.inject({"t": "interrupt", "seq": 3})
+            synthetic_device.inject(
+                {"t": "interrupt", "seq": 2, "slot": 1, "turnId": str(started.turn_id)}
+            )
+            synthetic_device.inject(
+                {"t": "interrupt", "seq": 3, "slot": 1, "turnId": str(started.turn_id)}
+            )
         if not session.wait_for_interrupt(step_timeout):
             raise TimeoutError("device interrupt was not forwarded")
         _pass(output, "device_interrupt")

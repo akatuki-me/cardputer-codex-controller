@@ -42,6 +42,13 @@ public:
         return enqueue(message);
     }
 
+    bool send_select(std::uint8_t slot) {
+        JsonDocument message;
+        common(message, "select");
+        message["slot"] = slot;
+        return enqueue(message);
+    }
+
     bool send_interrupt(std::uint8_t slot, const char* turn_id) {
         JsonDocument message;
         common(message, "interrupt");
@@ -201,7 +208,7 @@ void render_run(const SlotState& slot) {
     display.printf("status: %.12s", slot.status);
     display.setTextColor(controller.interrupt_allowed(slot.slot - 1) ? TFT_YELLOW : TFT_DARKGREY, TFT_BLACK);
     display.setCursor(8, 106);
-    display.print("HOLD BtnA 0.5s TO INTERRUPT");
+    display.print("HOLD G0 0.5s TO INTERRUPT");
 }
 
 void render_approval() {
@@ -317,7 +324,11 @@ void handle_keyboard(std::uint32_t now_ms) {
     }
     for (char key = '1'; key <= '6'; ++key) {
         if (M5Cardputer.Keyboard.isKeyPressed(key)) {
-            controller.set_selected_slot(static_cast<std::uint8_t>(key - '0'));
+            const auto slot = static_cast<std::uint8_t>(key - '0');
+            controller.set_selected_slot(slot);
+            if (controller.can_send()) {
+                tx_queue.send_select(slot);
+            }
         }
     }
     if (!controller.approval().active) {

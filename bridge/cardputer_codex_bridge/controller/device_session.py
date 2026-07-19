@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import threading
 import time
+import uuid
+from collections.abc import Callable
 
 from cardputer_codex_bridge.app_server.types import JsonObject
 from cardputer_codex_bridge.device_link import SerialLink, SerialProvider
@@ -30,6 +32,7 @@ class DeviceControllerSession:
         self._sequence_lock = threading.Lock()
         self._handshake_lock = threading.Lock()
         self._handshake_complete = False
+        self._host_session = ""
         self._message_lock = threading.Lock()
         self._device_hello = threading.Event()
         self._interrupt_forwarded = threading.Event()
@@ -80,16 +83,24 @@ class DeviceControllerSession:
         return self.interrupt_messages >= count
 
     def send_snapshot(self) -> bool:
-        return self._link.send(self._state.snapshot(seq=self._next_sequence()))
+        with self._handshake_lock:
+            if not self._handshake_complete:
+                return False
+        return self._send_generated(lambda seq: self._state.snapshot(seq=seq))
 
     def _on_connected(self) -> None:
-        self._state.link_state = LinkState.ACTIVE
+        self._state.link_state = LinkState.STALE
         self._device_hello.clear()
         with self._handshake_lock:
             self._handshake_complete = False
+            self._host_session = uuid.uuid4().hex
+        with self._sequence_lock:
+            self._sequence = 0
 
     def _on_stale(self) -> None:
         self._state.link_state = LinkState.STALE
+        with self._handshake_lock:
+            self._handshake_complete = False
 
     def _on_message(self, message: JsonObject) -> None:
         message_type = message["t"]
@@ -97,17 +108,29 @@ class DeviceControllerSession:
             with self._handshake_lock:
                 if self._handshake_complete:
                     return
-                hello: JsonObject = {
-                    "t": "hello",
-                    "seq": self._next_sequence(),
-                    "proto": 1,
-                    "host": "bridge",
-                }
-                if not self._link.send(hello) or not self.send_snapshot():
+                session = self._host_session
+                if not session:
+                    raise OSError("host session was not initialized")
+                if not self._send_generated(
+                    lambda seq: {
+                        "t": "hello",
+                        "seq": seq,
+                        "proto": 1,
+                        "host": "bridge",
+                        "session": session,
+                    }
+                ):
+                    raise OSError("initial device-link snapshot could not be sent")
+                self._state.link_state = LinkState.ACTIVE
+                if not self._send_generated(lambda seq: self._state.snapshot(seq=seq)):
+                    self._state.link_state = LinkState.STALE
                     raise OSError("initial device-link snapshot could not be sent")
                 self._handshake_complete = True
             self._device_hello.set()
             return
+        with self._handshake_lock:
+            if not self._handshake_complete:
+                return
         if message_type == "select":
             slot = message.get("slot")
             if isinstance(slot, int) and not isinstance(slot, bool) and 1 <= slot <= 6:
@@ -116,13 +139,28 @@ class DeviceControllerSession:
             return
         if message_type != "interrupt":
             return
+        slot = message.get("slot")
+        turn_id = message.get("turnId")
+        if (
+            not isinstance(slot, int)
+            or isinstance(slot, bool)
+            or not isinstance(turn_id, str)
+            or not turn_id
+        ):
+            return
         with self._message_lock:
             self._interrupt_messages += 1
-        if self._state.interrupt_active(self._adapter):
+        if self._state.interrupt_claimed(slot, turn_id, self._adapter):
             self._interrupt_forwarded.set()
 
-    def _ping(self) -> JsonObject:
+    def _ping(self) -> JsonObject | None:
+        with self._handshake_lock:
+            if not self._handshake_complete:
+                return None
         return {"t": "ping", "seq": self._next_sequence()}
+
+    def _send_generated(self, factory: Callable[[int], JsonObject]) -> bool:
+        return self._link.send_generated(lambda: factory(self._next_sequence()))
 
     def _next_sequence(self) -> int:
         with self._sequence_lock:

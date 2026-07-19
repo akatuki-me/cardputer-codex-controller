@@ -1,4 +1,4 @@
-from .client import AppServerClient, codex_app_server_command
+from .client import SUPPORTED_CODEX_VERSIONS, AppServerClient, codex_app_server_command
 from .errors import (
     ActiveTurnRequiredError,
     AppServerClosedError,
@@ -43,6 +43,7 @@ __all__ = [
     "JsonValue",
     "RequestId",
     "ShutdownResult",
+    "SUPPORTED_CODEX_VERSIONS",
     "StderrSummary",
     "ThreadStartOptions",
     "codex_app_server_command",

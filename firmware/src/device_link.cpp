@@ -277,6 +277,25 @@ DispatchAction DeviceLinkDispatcher::dispatch(
         state_.counters_.invalid_json++;
         return DispatchAction::None;
     }
+    const bool is_hello = std::strcmp(type, "hello") == 0;
+    if (is_hello) {
+        std::uint32_t protocol_version = 0;
+        const char* session = document["session"].as<const char*>();
+        const bool valid_protocol = sequence > 0 &&
+                                    read_uint32(document["proto"], protocol_version) &&
+                                    protocol_version == kDeviceLinkProtocolVersion &&
+                                    state_.begin_host_session(session);
+        state_.protocol_ok_ = valid_protocol;
+        if (!valid_protocol) {
+            state_.counters_.invalid_json++;
+            state_.link_state_ = LinkState::Stale;
+            state_.service_state_ = ServiceState::Down;
+            state_.dirty_ = true;
+            return DispatchAction::None;
+        }
+    } else if (state_.host_session_[0] == '\0' || !state_.protocol_ok_) {
+        return DispatchAction::None;
+    }
     if (state_.sequence_seen_ && sequence <= state_.last_sequence_) {
         state_.counters_.old_sequence++;
         return DispatchAction::None;
@@ -290,19 +309,6 @@ DispatchAction DeviceLinkDispatcher::dispatch(
     }
 
     state_.counters_.valid_lines++;
-    if (std::strcmp(type, "hello") == 0) {
-        std::uint32_t protocol_version = 0;
-        const bool valid_protocol = read_uint32(document["proto"], protocol_version) &&
-                                    protocol_version == kDeviceLinkProtocolVersion;
-        state_.protocol_ok_ = valid_protocol;
-        if (!valid_protocol) {
-            state_.link_state_ = LinkState::Stale;
-            state_.service_state_ = ServiceState::Down;
-            state_.dirty_ = true;
-            return DispatchAction::None;
-        }
-    }
-
     state_.note_receive(now_ms);
     if (std::strcmp(type, "state") == 0) {
         apply_state(document, state_);

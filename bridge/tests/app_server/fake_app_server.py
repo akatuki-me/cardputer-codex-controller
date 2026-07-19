@@ -238,7 +238,12 @@ def main() -> int:
         sys.stderr.write("error: synthetic error with credential marker\n")
         sys.stderr.flush()
 
-    version = "9.9.9" if mode == "version-mismatch" else "0.144.5"
+    if mode == "version-mismatch":
+        version = "9.9.9"
+    elif mode == "version-0.144.6":
+        version = "0.144.6"
+    else:
+        version = "0.144.5"
     _write(
         {
             "id": request_id,

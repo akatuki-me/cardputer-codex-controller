@@ -9,6 +9,7 @@ constexpr std::size_t kSlotCount = 6;
 constexpr std::uint32_t kLinkStaleAfterMs = 6000;
 constexpr std::uint32_t kApprovalGuardMs = 300;
 constexpr std::size_t kApprovalVisibleLines = 3;
+constexpr std::size_t kHostSessionBytes = 65;
 
 enum class LinkState : std::uint8_t { Stale, Active };
 enum class ServiceState : std::uint8_t { Initializing, Ready, Down, AuthRequired };
@@ -65,6 +66,7 @@ public:
     [[nodiscard]] bool protocol_ok() const { return protocol_ok_; }
     [[nodiscard]] std::uint8_t selected_slot() const { return selected_slot_; }
     [[nodiscard]] std::uint32_t last_sequence() const { return last_sequence_; }
+    [[nodiscard]] const char* host_session() const { return host_session_; }
     [[nodiscard]] const SlotState& slot(std::size_t index) const { return slots_[index]; }
     [[nodiscard]] const ApprovalState& approval() const { return approval_; }
     [[nodiscard]] ApprovalState& approval() { return approval_; }
@@ -74,6 +76,7 @@ public:
 
     void clear_dirty() { dirty_ = false; }
     void mark_dirty() { dirty_ = true; }
+    [[nodiscard]] bool begin_host_session(const char* session);
     void note_receive(std::uint32_t now_ms);
     void update_link(std::uint32_t now_ms);
     void set_selected_slot(std::uint8_t slot);
@@ -105,6 +108,7 @@ private:
     std::uint8_t selected_slot_ = 1;
     std::uint32_t last_receive_ms_ = 0;
     std::uint32_t last_sequence_ = 0;
+    char host_session_[kHostSessionBytes] = {};
     SlotState slots_[kSlotCount] = {};
     ApprovalState approval_ = {};
     ProtocolCounters counters_ = {};

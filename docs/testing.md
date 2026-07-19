@@ -21,6 +21,10 @@
 - M1診断でdevice報告のstale経過時間を使い、通常の`hello`と区別して6秒境界を判定する
 - 再接続ごとに`hello`とfull snapshotを再送する
 - 合成deviceの重複`interrupt`をactive turnへ一度だけ転送する
+- handshake前はhost送信を0件に保ち、新しいopaque sessionごとにhost `seq`を1へresetする
+- snapshotとheartbeatの並行送信でも採番順とwrite順を一致させる
+- `interrupt`のslotと`turnId`がfocus中のactive turnへ完全一致しない場合は転送しない
+- Codex CLI 0.144.5とschema照合済み0.144.6だけをinitializeで受け入れる
 
 ## Protocol fixtures
 

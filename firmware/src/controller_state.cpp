@@ -13,6 +13,29 @@ ControllerState::ControllerState() {
     }
 }
 
+bool ControllerState::begin_host_session(const char* session) {
+    if (session == nullptr || session[0] == '\0') {
+        return false;
+    }
+    const std::size_t length = std::strlen(session);
+    if (length >= sizeof(host_session_)) {
+        return false;
+    }
+    if (std::strcmp(host_session_, session) == 0) {
+        return true;
+    }
+
+    std::memcpy(host_session_, session, length + 1);
+    sequence_seen_ = false;
+    last_sequence_ = 0;
+    receive_seen_ = false;
+    link_state_ = LinkState::Stale;
+    service_state_ = ServiceState::Initializing;
+    approval_ = {};
+    dirty_ = true;
+    return true;
+}
+
 void ControllerState::note_receive(std::uint32_t now_ms) {
     last_receive_ms_ = now_ms;
     receive_seen_ = true;
