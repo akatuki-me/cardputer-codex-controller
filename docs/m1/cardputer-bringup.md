@@ -4,7 +4,9 @@
 
 非侵襲gate: PASS
 
-hardware gate: 未実施
+hardware read-only preflight: PASS
+
+hardware write・input gate: 未実施
 
 ## 目的
 
@@ -44,6 +46,8 @@ Hostはserial openごとに新しいsessionと送信`seq=1`を作ります。Fir
 - G0 500ms: longを1回だけ通知
 - diagnostic build: PASS、RAM 26,716 bytes、Flash 461,721 bytes
 - production build: PASS、RAM 32,188 bytes、Flash 481,469 bytes
+- ROM loader read-only probe: ESP32-S3、8 MB flashを確認
+- flasher stub path: stub起動後のflash ID要求で通信が途切れ、erase/write開始前に停止
 
 Native fixtureはWindows側に`gcc/g++`がないため、同じsourceをWSLの`g++ 13.3.0`でcompileして実行しました。Cardputer向け2 targetはPlatformIO 6.1.18、Espressif32 6.7.0でbuildしました。
 
@@ -59,7 +63,7 @@ throughputは512 byteのechoを8回直列送受信し、合計byte数と経過�
 
 次は未実施です。build成功からhardware PASSへは昇格しません。
 
-1. `upload_speed = 115200`へ固定したdiagnostic firmwareの書き込み
+1. `upload_speed = 115200`と`--no-stub`を固定したdiagnostic firmwareの書き込み
 2. 最初のCOM port open
 3. board IDがCardputer-Advを示すこと
 4. device hello → host hello → ready

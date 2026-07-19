@@ -43,7 +43,7 @@ python -m platformio run -d firmware -e cardputer_adv_bringup
 
 `state`、`approval`、`decision`、`interrupt`などのCodex commandは実装していません。4KiB echoはpayloadを返信せず、byte数とFNV-1a checksumだけを返します。接続ごとのopaqueなhost sessionが変わった場合だけhost側sequenceを初期化します。
 
-USB Serial/JTAGのstub起動後に高速baudへ切り替える経路へ依存しないよう、診断targetだけは`upload_speed = 115200`へ固定しています。この設定は診断imageの内容やproduction targetへ影響しません。
+USB Serial/JTAGでflasher stub起動後の通信消失を避けるため、診断targetだけは`upload_speed = 115200`と`--no-stub`を固定し、ESP32-S3のROM loaderを使用します。この設定は診断imageの内容やproduction targetへ影響しません。
 
 書き込みとCOM port openはbuildとは別のhardware gateです。対象deviceとcommandを提示し、人間の明示承認を得るまで実行しません。
 
