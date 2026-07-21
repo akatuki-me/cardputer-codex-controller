@@ -469,6 +469,7 @@ def test_controller_closes_client_when_app_server_start_fails(
             label="fixture",
             port="synthetic",
             provider=FailingSerialProvider(),
+            command=(sys.executable, "-u", str(FAKE_SERVER)),
             step_timeout=0.2,
         )
 

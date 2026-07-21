@@ -20,6 +20,13 @@ class _FcntlModule(Protocol):
     def flock(self, file_descriptor: int, operation: int) -> None: ...
 
 
+class _MsvcrtModule(Protocol):
+    LK_NBLCK: int
+    LK_UNLCK: int
+
+    def locking(self, file_descriptor: int, mode: int, size: int) -> None: ...
+
+
 class ControllerInstanceGuard:
     """process終了時にOSが回収するcontroller単一起動lock。"""
 
@@ -75,9 +82,8 @@ def _default_lock_path() -> Path:
 
 def _lock(stream: BinaryIO) -> None:
     if os.name == "nt":
-        import msvcrt
-
-        msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+        msvcrt_module = cast(_MsvcrtModule, importlib.import_module("msvcrt"))
+        msvcrt_module.locking(stream.fileno(), msvcrt_module.LK_NBLCK, 1)
         return
 
     fcntl_module = cast(_FcntlModule, importlib.import_module("fcntl"))
@@ -89,9 +95,8 @@ def _lock(stream: BinaryIO) -> None:
 
 def _unlock(stream: BinaryIO) -> None:
     if os.name == "nt":
-        import msvcrt
-
-        msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+        msvcrt_module = cast(_MsvcrtModule, importlib.import_module("msvcrt"))
+        msvcrt_module.locking(stream.fileno(), msvcrt_module.LK_UNLCK, 1)
         return
 
     fcntl_module = cast(_FcntlModule, importlib.import_module("fcntl"))
