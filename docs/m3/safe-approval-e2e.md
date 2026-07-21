@@ -83,6 +83,19 @@ Production firmwareの書き込み、自動reset、最初の実port open、実Co
 
 この記録はhost harness、既存firmware境界、buildのpreflightです。実portは開いておらず、hardware PASSではありません。
 
+## 2026-07-21 hardware validation
+
+Hardware承認後、production firmwareへ固定3 fixtureを実portで送信し、次を受入しました。Codex app-server、command executor、flash/uploadは起動していません。
+
+- serial linkとdevice hello: PASS
+- 表示切替直後のaccept試行: decisionなし
+- 300ms経過後・本文末尾未到達のaccept試行: decisionなし
+- 6行本文の末尾到達後accept: 1回だけ送信
+- high-risk: `A ACCEPT`非表示、accept試行はdecisionなし、declineは1回だけ送信
+- 本文不完全: `A ACCEPT`非表示、accept試行とlocal holdはdecisionなし、declineは1回だけ送信
+
+正確な299/300ms境界はnative fixture、物理表示とキー操作はoperator確認、decision有無と件数はhost recorderで分担して判定しました。公開記録にはport、device ID、approval ID、本文、cwd、生NDJSONを含めません。
+
 ## 未検証境界
 
-300ms guard境界の早押し、5行以上の本文を最下端までscrollする操作、high-risk表示の物理確認、長時間運転は未受入です。Issue #18用の合成fixtureと実port dry-runがPASSしても、hardware承認後の物理確認までは実機PASSとして扱いません。
+長時間運転は未受入です。合成fixtureとdry-runは引き続きhardware PASSの代用にしません。

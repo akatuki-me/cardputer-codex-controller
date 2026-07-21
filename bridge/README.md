@@ -34,7 +34,7 @@ cardputer-codex-controller bringup --synthetic
 cardputer-codex-controller approval-fixture --synthetic
 ```
 
-`approval-fixture`はapp-serverやcommand executorを起動せず、長文low-risk、high-risk、本文不完全の固定3件だけを`DeviceControllerSession`へ送ります。合成deviceは状態機械とsanitized outputを検証し、実portではoperatorが画面と物理キーを確認します。`--port ... --dry-run`または`--port-handle ... --dry-run`はproviderを生成せず、serial I/Oを開始しません。実portでdry-runを外す操作にはhardware承認が必要です。
+`approval-fixture`はapp-serverやcommand executorを起動せず、長文low-risk、high-risk、本文不完全の固定3件だけを`DeviceControllerSession`へ送ります。合成deviceは状態機械とsanitized outputを検証し、実portではoperatorがCardputerの画面と物理キーを確認してからhost consoleで`ok`と入力し`Enter`で確定します。最初の300ms guardはarm promptで早押しを事前準備します。`--port ... --dry-run`または`--port-handle ... --dry-run`はproviderを生成せず、serial I/Oを開始しません。実portでdry-runを外す操作にはhardware承認が必要です。
 
 ## USB CDC E2E
 

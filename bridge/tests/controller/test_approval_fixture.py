@@ -135,6 +135,10 @@ def test_guided_operator_path_requires_confirmation_and_observes_wire_decisions(
     result = output.getvalue()
     assert hello_thread.is_alive() is False
     assert result.count(" ACTION ") == 11
+    assert "Cardputer画面を注視" in result
+    assert "切替直後300ms未満" in result
+    assert "aとEnterを同時に押し" in result
+    assert result.count("host consoleでokと入力しEnterで確定") == 11
     assert result.endswith("approval_fixture PASS\n")
     assert "private-port-value" not in result
     assert "fixture-long" not in result

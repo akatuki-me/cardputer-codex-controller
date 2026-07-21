@@ -35,4 +35,4 @@ Production firmwareはbuildとnative fixtureに加え、実機への書き込み
 
 M1でflasher stub起動後のUSB通信消失を確認したため、productionとdiagnosticのuploadは115200 baudのROM loaderと`--no-stub`を共通契約とします。Production uploadがこの設定を持つことはhost testで固定します。
 
-承認後にSCR-HOME/RUN、approval guard、物理accept/decline/hold、G0 interrupt、stale/reconnect、full snapshot復元を順に受入しました。300ms早押し境界、長文scroll、high-risk表示、長時間運転は未受入であり、合成結果を実機PASSへ自動昇格しません。
+承認後にSCR-HOME/RUN、approval guard、物理accept/decline/hold、G0 interrupt、stale/reconnect、full snapshot復元を順に受入しました。追加fixtureで300ms早押し、6行本文scroll、high-riskと本文不完全のaccept非表示、local hold、declineも受入済みです。長時間運転は未受入であり、合成結果を実機PASSへ自動昇格しません。

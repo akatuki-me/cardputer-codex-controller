@@ -67,9 +67,24 @@ class _ManualFixtureOperator:
         self._input = input_stream
 
     def arm(self, fixture: str) -> None:
+        instructions = {
+            "long_low_risk": (
+                "Cardputer画面を注視し、現在の画面からfixture approval画面への"
+                "切替直後にaとEnterを同時押しできる状態にしてから"
+                "host consoleでokと入力しEnterで確定"
+            ),
+            "high_risk": (
+                "Cardputerの表示と物理キーを確認できる状態にしてから"
+                "host consoleでokと入力しEnterで確定"
+            ),
+            "incomplete": (
+                "Cardputerの表示と物理キーを確認できる状態にしてから"
+                "host consoleでokと入力しEnterで確定"
+            ),
+        }
         self._read_confirmation(
             f"{fixture}_arm",
-            "deviceを手元に置き、fixture表示を開始できる状態でokを入力",
+            instructions[fixture],
         )
 
     def confirm(self, checkpoint: str, instruction: str) -> None:
@@ -157,18 +172,22 @@ class _ApprovalFixtureRunner:
         shown_at = self._present("long_low_risk", approval)
         self._expect_no_decision(
             "guard_before_300ms",
-            "表示直後300ms未満にscrollせずaとEnterを押し、完了後okを入力",
+            "Cardputerでfixture approval画面への切替直後300ms未満に"
+            "scrollせずaとEnterを同時に押し、完了後host consoleでokと入力し"
+            "Enterで確定",
         )
         remaining = shown_at + _GUARD_SECONDS - time.monotonic()
         if remaining > 0:
             time.sleep(remaining)
         self._expect_no_decision(
             "body_end_gate",
-            "300ms経過後も本文末尾へ移動せずaとEnterを押し、完了後okを入力",
+            "Cardputerで300ms経過後も本文末尾へ移動せずaとEnterを押し、"
+            "完了後host consoleでokと入力しEnterで確定",
         )
         self._expect_decision(
             "long_body_accept",
-            "jを3回押して本文末尾へ進み、aとEnterを押した後okを入力",
+            "Cardputerでjを3回押して本文末尾へ進み、aとEnterを押した後"
+            "host consoleでokと入力しEnterで確定",
             approval.approval_id,
             "accept",
         )
@@ -184,11 +203,12 @@ class _ApprovalFixtureRunner:
         self._present("high_risk", approval)
         self._expect_no_decision(
             "high_risk_accept_hidden",
-            "A ACCEPTが表示されないことを確認し、aとEnterを押した後okを入力",
+            "CardputerでA ACCEPTが表示されないことを確認し、aとEnterを"
+            "押した後host consoleでokと入力しEnterで確定",
         )
         self._expect_decision(
             "high_risk_decline",
-            "dとEnterを押した後okを入力",
+            "CardputerでdとEnterを押した後host consoleでokと入力しEnterで確定",
             approval.approval_id,
             "decline",
         )
@@ -204,15 +224,17 @@ class _ApprovalFixtureRunner:
         self._present("incomplete", approval)
         self._expect_no_decision(
             "incomplete_accept_hidden",
-            "A ACCEPTが表示されないことを確認し、aとEnterを押した後okを入力",
+            "CardputerでA ACCEPTが表示されないことを確認し、aとEnterを"
+            "押した後host consoleでokと入力しEnterで確定",
         )
         self._expect_no_decision(
             "incomplete_hold",
-            "0を押してlocal holdのままであることを確認し、okを入力",
+            "Cardputerで0を押してlocal holdのままであることを確認し、"
+            "host consoleでokと入力しEnterで確定",
         )
         self._expect_decision(
             "incomplete_decline",
-            "dとEnterを押した後okを入力",
+            "CardputerでdとEnterを押した後host consoleでokと入力しEnterで確定",
             approval.approval_id,
             "decline",
         )
