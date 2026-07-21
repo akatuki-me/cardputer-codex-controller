@@ -34,6 +34,8 @@ app-server eventからhost state、device-link、実機SCR-HOMEまでの縦串�
 
 自動起動、port解放、再接続、sleep復帰、監査log、24時間連続運転を完成させます。
 
+状態: controllerのprocess間単一起動、異常経路のlock回収、serial先行解放をhost-only fixtureで完了。実USB portの再open、自動起動、sleep復帰、監査log、24時間連続運転は継続。
+
 ## M5 PTT v1.1
 
 音声録音、転送、文字起こし、turn投入はcore v1.0後の拡張とします。

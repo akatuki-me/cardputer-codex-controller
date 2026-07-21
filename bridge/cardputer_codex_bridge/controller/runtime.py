@@ -276,9 +276,9 @@ def run_controller(
     session: DeviceControllerSession | None = None
     pump: _EventPump | None = None
     shutdown = None
-    client.start()
-    emit("app_server PASS\n")
     try:
+        client.start()
+        emit("app_server PASS\n")
         initialized = client.initialize(
             ClientInfo(
                 name="cardputer-codex-controller",

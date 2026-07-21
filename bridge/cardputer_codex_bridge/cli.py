@@ -14,6 +14,7 @@ from cardputer_codex_bridge.controller.e2e import (
     run_e2e_dry_run,
     run_serial_e2e,
 )
+from cardputer_codex_bridge.controller.instance_guard import ControllerInstanceGuard
 from cardputer_codex_bridge.controller.live_demo import run_codex_demo
 from cardputer_codex_bridge.controller.runtime import (
     run_controller,
@@ -189,24 +190,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.dry_run:
                 run_controller_dry_run(sys.stdout, cwd=args.cwd, label=args.label)
                 return 0
-            control_provider: SerialProvider
-            control_synthetic: SyntheticSerialProvider | None
-            if args.synthetic:
-                synthetic_control_provider = SyntheticSerialProvider()
-                control_provider = synthetic_control_provider
-                control_synthetic = synthetic_control_provider
-            else:
-                control_provider = PySerialProvider()
-                control_synthetic = None
-            run_controller(
-                sys.stdout,
-                sys.stdin,
-                cwd=args.cwd,
-                label=args.label,
-                port=selected_port,
-                provider=control_provider,
-                synthetic_device=control_synthetic,
-            )
+            with ControllerInstanceGuard():
+                control_provider: SerialProvider
+                control_synthetic: SyntheticSerialProvider | None
+                if args.synthetic:
+                    synthetic_control_provider = SyntheticSerialProvider()
+                    control_provider = synthetic_control_provider
+                    control_synthetic = synthetic_control_provider
+                else:
+                    control_provider = PySerialProvider()
+                    control_synthetic = None
+                run_controller(
+                    sys.stdout,
+                    sys.stdin,
+                    cwd=args.cwd,
+                    label=args.label,
+                    port=selected_port,
+                    provider=control_provider,
+                    synthetic_device=control_synthetic,
+                )
         except Exception as error:
             print(f"control FAIL {type(error).__name__}", file=sys.stderr)
             return 1

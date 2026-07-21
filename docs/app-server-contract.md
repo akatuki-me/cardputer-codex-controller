@@ -104,3 +104,5 @@ Host consoleもserver提示集合との積集合だけを操作として公開�
 stdio transportには`session/end` RPCはありません。新規操作を止め、active turnがあれば`turn/interrupt`の応答と`turn/completed`を待ってからstdinを閉じ、EOFを送ります。stdout/stderrのreaderを維持したままOS終了コード0を待ちます。
 
 0.144.6の実装にはRPC drain、background task drain、thread shutdownがあるため、controllerは終了時だけ最大60秒を待ちます。timeout後のkill、非0終了、reader thread残留は正常終了へ昇格しません。`thread/archive`と`thread/delete`は永続状態を変更するためshutdown代替には使用しません。
+
+非dry-runのcontrollerはprocess間lockを保持したまま、device sessionとserial portを先に閉じ、その後にapp-serverのshutdownを待ちます。これによりdrain中の二重起動を拒否しつつserial資源を先に解放します。App-server起動途中の例外でもclient cleanupを実行し、client終了後にだけinstance lockを解放します。

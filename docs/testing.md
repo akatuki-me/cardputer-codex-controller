@@ -40,6 +40,10 @@
 - question受信、host回答、matching resolved、turn完了を合成app-server E2Eで通す
 - approvalとquestionの同時pendingでapprovalを優先し、各resolvedを正しいqueueへ相関してquestion表示へ復帰する
 - experimentalな未知server requestを黙ってdropせず、固定のJSON-RPC `-32601` errorでrequestをfail closedする
+- 非dry-run controllerの二重起動をprovider生成とCodex起動より前に拒否する
+- 正常終了、例外、process強制終了後にcontroller instance lockを再取得する
+- app-server起動途中の失敗でもclient cleanupを実行する
+- app-server shutdown待機より先にserialを閉じ、排他的な合成資源を3秒以内に再openする
 
 ## Protocol fixtures
 
@@ -64,6 +68,8 @@ Cardputer-Adv実機では診断firmware v0.1.3を用い、recovery-first復元�
 実command approvalでは`availableDecisions`と追加amendment contextを受信し、deviceへ不完全なaccept UIを出さずhost-onlyとしました。Server提示の`cancel`で応答し、`serverRequest/resolved`、turn完了、書き込み未発生、終了コード0を確認します。出力証拠はID、command、cwd、prompt、model、portを含まない固定fieldだけに限定します。
 
 App-server終了は処理中RPCとthread cleanupをdrainするため、controllerは終了時だけ最大60秒を待ちます。60秒後の強制kill、非0終了、event reader残留はFAILです。
+
+M6 host lifecycle fixtureは別processとのlock競合、正常・例外・強制終了後のlock回収、起動途中のclient cleanup、serial先行解放を検証します。App-serverのcloseを待機させた状態でも排他的な合成serial資源を終了開始から3秒以内に再openします。この結果は実USB portのhardware PASSには昇格しません。
 
 M4 host user-inputはCodex CLI 0.144.6生成schemaと合成app-serverで検証します。Controllerだけが`experimentalApi=true`へopt-inし、複数質問の部分蓄積と一括response、secret no-echo adapter、option/Other相関、pending lifecycle、interrupt時の破棄、Deviceへの`question` attentionを受入対象にします。実Codexで`requestUserInput`を発生させる経路は未検証であり、合成結果を実接続PASSへ昇格しません。
 

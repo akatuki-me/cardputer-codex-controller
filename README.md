@@ -25,7 +25,7 @@ Python host bridge + pending queue
 Cardputer-Adv firmware
 ```
 
-詳細は[アーキテクチャ](docs/architecture.md)、[UX仕様](docs/ux-spec.md)、[安全仕様](docs/safety.md)、[ロードマップ](docs/roadmap.md)を参照してください。
+詳細は[アーキテクチャ](docs/architecture.md)、[UX仕様](docs/ux-spec.md)、[安全仕様](docs/safety.md)、[ロードマップ](docs/roadmap.md)を参照してください。Controllerの単一起動と終了順序は[M6 lifecycle](docs/m6/controller-lifecycle.md)に記録しています。
 
 ## 開発
 
@@ -148,6 +148,8 @@ cardputer-codex-controller control --port-handle local-private/device-port.txt -
 
 `--dry-run`を外すproduction controller接続はhardware承認ゲートの対象です。`quit`はapp-serverへstdin EOFを送り、最大60秒の有界待機後も正常終了しない場合は失敗として扱います。
 
+非dry-runの`control`は1processだけが起動できます。2つ目はprovider生成、serial open、Codex起動より前に`control FAIL ControllerAlreadyRunningError`で終了し、port、PID、lock pathを表示しません。終了時はserialをapp-serverのdrainより先に閉じ、drain完了後にinstance lockを解放します。
+
 ## 状態
 
 - 公開開発基盤: 実装済み
@@ -162,7 +164,8 @@ cardputer-codex-controller control --port-handle local-private/device-port.txt -
 - M4 host user-input: 複数質問の一括responseとsecret no-echo入力を合成app-server E2Eで受入済み
 - 実USB CDC controller E2E: 実Codexとproduction実機で受入済み
 - 専用`e2e` commandの実port経路: 未検証（production受入は`control` commandで実施）
-- multi-client・ADR・M4 device interaction・M6運用: 継続中
+- M6 controller単一起動・host-only port解放fixture: 実装済み（実USB portの再open、自動起動、sleep復帰、24時間運転は未受入）
+- multi-client・ADR・M4 device interaction・M6残作業: 継続中
 - 実機書き込み: M1診断firmware v0.1.3とproduction imageを受入済み
 
 ## 免責
