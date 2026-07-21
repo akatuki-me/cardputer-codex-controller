@@ -3,12 +3,16 @@ from __future__ import annotations
 import io
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import cardputer_codex_bridge.cli as cli_module
 import cardputer_codex_bridge.controller.runtime as runtime_module
 import pytest
 from cardputer_codex_bridge.cli import main
+from cardputer_codex_bridge.controller.instance_guard import (
+    ControllerAlreadyRunningError,
+)
 from cardputer_codex_bridge.controller.runtime import run_controller
 from cardputer_codex_bridge.device_link import SerialPort, SyntheticSerialProvider
 
@@ -41,6 +45,67 @@ class FailingSerialProvider:
     ) -> SerialPort:
         del port, baudrate, read_timeout
         raise OSError("synthetic open failure")
+
+
+class _ExclusiveSyntheticPort:
+    def __init__(self, inner: SerialPort, release: Callable[[], None]) -> None:
+        self._inner = inner
+        self._release = release
+        self._closed = False
+
+    def read(self, size: int = 1) -> bytes:
+        return self._inner.read(size)
+
+    def write(self, data: bytes) -> int | None:
+        return self._inner.write(data)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._inner.close()
+        finally:
+            self._release()
+
+
+class ExclusiveSyntheticProvider:
+    def __init__(self) -> None:
+        self._delegate = SyntheticSerialProvider()
+        self._lock = threading.Lock()
+        self._active = False
+        self.released = threading.Event()
+
+    def open(
+        self,
+        port: str,
+        *,
+        baudrate: int,
+        read_timeout: float,
+    ) -> SerialPort:
+        with self._lock:
+            if self._active:
+                raise OSError("synthetic port is already open")
+            self._active = True
+            self.released.clear()
+        try:
+            inner = self._delegate.open(
+                port,
+                baudrate=baudrate,
+                read_timeout=read_timeout,
+            )
+        except BaseException:
+            self._mark_released()
+            raise
+        return _ExclusiveSyntheticPort(inner, self._mark_released)
+
+    def inject(self, message: dict[str, object]) -> None:
+        self._delegate.inject(message)
+
+    def _mark_released(self) -> None:
+        with self._lock:
+            self._active = False
+            self.released.set()
 
 
 class ApprovalInput(io.StringIO):
@@ -372,6 +437,104 @@ def test_controller_startup_failure_keeps_the_connection_timeout(
         )
 
     assert "controller event pump did not stop" not in output.getvalue()
+
+
+def test_controller_closes_client_when_app_server_start_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class StartFailingClient:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def start(self) -> None:
+            raise RuntimeError("synthetic start failure")
+
+        def close(self) -> object:
+            self.close_calls += 1
+            return object()
+
+    client = StartFailingClient()
+    monkeypatch.setattr(
+        runtime_module,
+        "AppServerClient",
+        lambda **kwargs: client,
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic start failure"):
+        run_controller(
+            io.StringIO(),
+            io.StringIO("quit\n"),
+            cwd=tmp_path,
+            label="fixture",
+            port="synthetic",
+            provider=FailingSerialProvider(),
+            step_timeout=0.2,
+        )
+
+    assert client.close_calls == 1
+
+
+def test_controller_releases_serial_before_app_server_shutdown_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    provider = ExclusiveSyntheticProvider()
+    shutdown_started = threading.Event()
+    app_server_close_started = threading.Event()
+    allow_app_server_close = threading.Event()
+    errors: list[BaseException] = []
+    real_client = runtime_module.AppServerClient
+
+    class DelayedCloseClient(real_client):
+        def close(self) -> object:
+            app_server_close_started.set()
+            if not allow_app_server_close.wait(timeout=5.0):
+                raise TimeoutError("synthetic close release was not received")
+            return super().close()
+
+    class ShutdownInput(io.StringIO):
+        def readline(self, size: int = -1) -> str:
+            shutdown_started.set()
+            return super().readline(size)
+
+    monkeypatch.setattr(runtime_module, "AppServerClient", DelayedCloseClient)
+
+    def run() -> None:
+        try:
+            run_controller(
+                io.StringIO(),
+                ShutdownInput("quit\n"),
+                cwd=tmp_path,
+                label="fixture",
+                port="synthetic",
+                provider=provider,
+                synthetic_device=provider,
+                command=(sys.executable, "-u", str(FAKE_SERVER)),
+                step_timeout=2.0,
+            )
+        except BaseException as error:
+            errors.append(error)
+
+    controller_thread = threading.Thread(target=run)
+    controller_thread.start()
+    try:
+        assert shutdown_started.wait(timeout=2.0)
+        assert provider.released.wait(timeout=3.0)
+        assert app_server_close_started.wait(timeout=3.0)
+        assert controller_thread.is_alive()
+        reopened = provider.open(
+            "synthetic",
+            baudrate=115_200,
+            read_timeout=0.1,
+        )
+        reopened.close()
+    finally:
+        allow_app_server_close.set()
+        controller_thread.join(timeout=5.0)
+
+    assert not controller_thread.is_alive()
+    assert errors == []
 
 
 def test_controller_runtime_allows_bounded_session_end_cleanup(
@@ -815,6 +978,12 @@ def test_control_dry_run_does_not_start_controller(
         "run_controller",
         lambda *args, **kwargs: pytest.fail("dry-run started controller"),
     )
+    monkeypatch.setattr(
+        cli_module,
+        "ControllerInstanceGuard",
+        lambda: pytest.fail("dry-run acquired controller instance guard"),
+        raising=False,
+    )
 
     assert (
         main(
@@ -868,3 +1037,45 @@ def test_control_cli_routes_synthetic_provider(
     assert len(called) == 1
     assert called[0]["port"] == "synthetic"
     assert isinstance(called[0]["provider"], SyntheticSerialProvider)
+
+
+def test_control_cli_rejects_duplicate_before_provider_creation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    class RejectingGuard:
+        def __enter__(self) -> None:
+            raise ControllerAlreadyRunningError("controller is already running")
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr(cli_module, "ControllerInstanceGuard", RejectingGuard, raising=False)
+    monkeypatch.setattr(
+        cli_module,
+        "SyntheticSerialProvider",
+        lambda: pytest.fail("duplicate controller created a provider"),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "run_controller",
+        lambda *args, **kwargs: pytest.fail("duplicate controller started runtime"),
+    )
+
+    assert (
+        main(
+            [
+                "control",
+                "--cwd",
+                str(tmp_path),
+                "--label",
+                "fixture",
+                "--synthetic",
+            ]
+        )
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "control FAIL ControllerAlreadyRunningError\n"
