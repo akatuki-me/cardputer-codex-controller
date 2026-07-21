@@ -107,7 +107,10 @@ def _run_resume(mode: str, state_path: Path, request: dict[str, Any]) -> int:
     if not isinstance(params, dict) or params.get("threadId") != SYNTHETIC_THREAD_ID:
         return 31
 
-    if mode == "resume-not-found" or not state_path.is_file():
+    if mode == "resume-not-found-with-notification":
+        _write(_thread_started())
+        _write_error(request.get("id"), -32004)
+    elif mode == "resume-not-found" or not state_path.is_file():
         _write_error(request.get("id"), -32004)
     elif mode == "resume-permission-denied":
         _write_error(request.get("id"), -32003)

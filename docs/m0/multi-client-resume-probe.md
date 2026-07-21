@@ -56,7 +56,7 @@ $env:PYTHONPATH = "bridge"
 python -m pytest -q bridge/tests/app_server/test_multi_client_resume_probe.py
 ```
 
-2026-07-21の結果は`10 passed`。次を確認した。
+2026-07-21の結果は`11 passed`。次を確認した。
 
 - client A切断後にclient Bが共有された合成threadをresumeする
 - 成功、不在、権限拒否、状態拒否を混同しない
@@ -79,8 +79,9 @@ $env:PYTHONPATH = "bridge"
 python -m pytest -q -s bridge/tests/app_server/test_live_multi_client_resume.py
 ```
 
-結果は`1 passed`。公開recordはstatus、error code、正規化したnotification kind、shutdown時間だけを
-出力し、thread/turn ID、本文、workspace path、認証情報、生notification、stderr本文を含めない。
+結果は`1 passed`。公開recordはCodex version、transport、archive確認、response statusとerror code、
+正規化したnotification kind、unsubscribe status、shutdown時間だけを出力する。Thread/turn ID、本文、
+workspace path、認証情報、生notification、stderr本文は含めない。
 
 | scenario | resume結果 | responseのthread状態 | notification |
 | --- | --- | --- | --- |
