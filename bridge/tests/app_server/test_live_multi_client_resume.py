@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from cardputer_codex_bridge.app_server import (
 )
 
 LIVE_ENV = "CARDPUTER_CODEX_LIVE_MULTI_CLIENT"
+LIVE_CODEX_VERSION = "0.144.6"
 CLIENT_INFO = ClientInfo(
     name="cardputer-multi-client-live-probe",
     title="Cardputer Multi-client Live Probe",
@@ -43,14 +45,12 @@ class ThreadSnapshot:
 class ResumeObservation:
     outcome: str
     error_code: int | None
-    error_kind: str | None
     status: str | None
     turn_statuses: tuple[str, ...]
 
     def as_public_json(self) -> JsonObject:
         return {
             "errorCode": self.error_code,
-            "errorKind": self.error_kind,
             "outcome": self.outcome,
             "status": self.status,
             "turnStatuses": list(self.turn_statuses),
@@ -60,6 +60,7 @@ class ResumeObservation:
 def _client() -> AppServerClient:
     return AppServerClient(
         command=codex_app_server_command(),
+        expected_codex_versions=(LIVE_CODEX_VERSION,),
         request_timeout=30.0,
         shutdown_timeout=65.0,
     )
@@ -69,7 +70,9 @@ def _open_client() -> AppServerClient:
     client = _client()
     client.start()
     try:
-        client.initialize(CLIENT_INFO, experimental_api=True)
+        initialized = client.initialize(CLIENT_INFO, experimental_api=True)
+        if initialized.codex_version != LIVE_CODEX_VERSION:
+            raise LiveProbeContractError("live probe connected to an unexpected Codex version")
     except Exception:
         client.close()
         raise
@@ -121,7 +124,6 @@ def _resume(client: AppServerClient, thread_id: str, **extra: JsonValue) -> Resu
         return ResumeObservation(
             outcome="error",
             error_code=error.code,
-            error_kind=error.kind,
             status=None,
             turn_statuses=(),
         )
@@ -131,7 +133,6 @@ def _resume(client: AppServerClient, thread_id: str, **extra: JsonValue) -> Resu
     return ResumeObservation(
         outcome="resumed",
         error_code=None,
-        error_kind=None,
         status=snapshot.status,
         turn_statuses=snapshot.turn_statuses,
     )
@@ -197,8 +198,11 @@ def _observe_until(
     deadline = time.monotonic() + timeout
     kinds: list[str] = []
     while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            message = client.next_message(timeout=min(1.0, deadline - time.monotonic()))
+            message = client.next_message(timeout=min(1.0, remaining))
         except AppServerTimeoutError:
             continue
         kind = _notification_kind(message)
@@ -248,13 +252,16 @@ def _close(client: AppServerClient) -> int:
 
 
 def _archive_best_effort(thread_id: str) -> None:
-    cleanup = _open_client()
+    cleanup: AppServerClient | None = None
     try:
+        cleanup = _open_client()
         cleanup.request("thread/archive", {"threadId": thread_id}, timeout=30.0)
     except AppServerError:
         pass
     finally:
-        cleanup.close()
+        if cleanup is not None:
+            with suppress(AppServerError):
+                cleanup.close()
 
 
 def _archive(thread_id: str) -> None:
@@ -266,6 +273,11 @@ def _archive(thread_id: str) -> None:
         )
     finally:
         _close(cleanup)
+
+
+def _require_equal(actual: object, expected: object, label: str) -> None:
+    if actual != expected:
+        raise LiveProbeContractError(f"{label} violated the live contract")
 
 
 @pytest.mark.skipif(
@@ -300,6 +312,18 @@ def test_live_multi_client_resume_contract(tmp_path: Path) -> None:
             required=False,
         )
         idle_unsubscribe = _unsubscribe(idle_client, thread_id)
+        _require_equal(
+            idle_resume,
+            ResumeObservation(
+                outcome="resumed",
+                error_code=None,
+                status="idle",
+                turn_statuses=("completed",),
+            ),
+            "idle resume",
+        )
+        _require_equal(idle_saw_thread_started, False, "idle resume notification")
+        _require_equal(idle_unsubscribe, "unsubscribed", "idle unsubscribe")
         idle_shutdown_ms = _close(idle_client)
         open_clients.remove(idle_client)
 
@@ -322,6 +346,16 @@ def test_live_multi_client_resume_contract(tmp_path: Path) -> None:
         )
 
         state_error = _resume(primary, thread_id, history=[])
+        _require_equal(
+            state_error,
+            ResumeObservation(
+                outcome="error",
+                error_code=-32600,
+                status=None,
+                turn_statuses=(),
+            ),
+            "loaded-state resume",
+        )
         _interrupt(primary, thread_id, active_turn_id)
         primary_completed_notifications, _ = _observe_until(
             primary,
@@ -337,6 +371,19 @@ def test_live_multi_client_resume_contract(tmp_path: Path) -> None:
         )
 
         running_unsubscribe = _unsubscribe(running_client, thread_id)
+        _require_equal(
+            running_resume,
+            ResumeObservation(
+                outcome="resumed",
+                error_code=None,
+                status="idle",
+                turn_statuses=("completed", "interrupted"),
+            ),
+            "running resume",
+        )
+        _require_equal(running_saw_thread_started, False, "running resume notification")
+        _require_equal(secondary_saw_completion, False, "secondary completion notification")
+        _require_equal(running_unsubscribe, "unsubscribed", "running unsubscribe")
         running_shutdown_ms = _close(running_client)
         open_clients.remove(running_client)
         primary_shutdown_ms = _close(primary)
@@ -356,6 +403,36 @@ def test_live_multi_client_resume_contract(tmp_path: Path) -> None:
             "ffffffff-ffff-7fff-bfff-ffffffffffff",
         )
         disconnected_unsubscribe = _unsubscribe(resumed_client, thread_id)
+        _require_equal(
+            disconnected_resume,
+            ResumeObservation(
+                outcome="resumed",
+                error_code=None,
+                status="idle",
+                turn_statuses=("completed", "interrupted"),
+            ),
+            "disconnected resume",
+        )
+        _require_equal(
+            missing_resume,
+            ResumeObservation(
+                outcome="error",
+                error_code=-32600,
+                status=None,
+                turn_statuses=(),
+            ),
+            "missing resume",
+        )
+        _require_equal(
+            disconnected_saw_thread_started,
+            False,
+            "disconnected resume notification",
+        )
+        _require_equal(
+            disconnected_unsubscribe,
+            "unsubscribed",
+            "disconnected unsubscribe",
+        )
         disconnected_shutdown_ms = _close(resumed_client)
         open_clients.remove(resumed_client)
         _archive(thread_id)
@@ -363,7 +440,7 @@ def test_live_multi_client_resume_contract(tmp_path: Path) -> None:
 
         public_record = {
             "archiveConfirmed": archived,
-            "codexVersion": "0.144.6",
+            "codexVersion": LIVE_CODEX_VERSION,
             "disconnectedResume": disconnected_resume.as_public_json(),
             "disconnectedSawThreadStarted": disconnected_saw_thread_started,
             "disconnectedShutdownMs": disconnected_shutdown_ms,
@@ -394,12 +471,16 @@ def test_live_multi_client_resume_contract(tmp_path: Path) -> None:
             "transport": "independent_stdio_processes",
         }
         encoded = json.dumps(public_record, sort_keys=True)
-        if thread_id in encoded or str(tmp_path) in encoded or SEED_PROMPT in encoded:
+        if any(
+            private_value in encoded
+            for private_value in (thread_id, str(tmp_path), SEED_PROMPT, WAIT_PROMPT)
+        ):
             raise LiveProbeContractError("public record contains private probe data")
         print(encoded)
     finally:
         for client in reversed(open_clients):
-            client.close()
+            with suppress(AppServerError):
+                client.close()
         if thread_id is not None and not archived:
             _archive_best_effort(thread_id)
 

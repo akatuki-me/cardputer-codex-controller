@@ -13,6 +13,7 @@ import pytest
 from cardputer_codex_bridge.app_server import (
     AppServerClient,
     AppServerResponseError,
+    AppServerTimeoutError,
     ClientInfo,
 )
 
@@ -154,11 +155,11 @@ def _create_shared_thread(state_path: Path) -> ResumeSucceeded:
 
 
 def _classify_resume_error(error: AppServerResponseError) -> ResumeProbeResult:
-    if error.kind == "not_found":
+    if error.code == -32004:
         return ResumeNotFound()
-    if error.kind == "permission_denied":
+    if error.code == -32003:
         return ResumePermissionDenied()
-    if error.kind == "invalid_state":
+    if error.code == -32002:
         return ResumeInvalidState()
     raise ProbeContractError("resume error is not classified") from error
 
@@ -187,6 +188,13 @@ def _resume_shared_thread(
                 client,
                 owned_thread_id=thread_id,
             ).claim_consumer().collect(notification_count)
+        else:
+            try:
+                client.next_message(timeout=0.2)
+            except AppServerTimeoutError:
+                pass
+            else:
+                raise ProbeContractError("resume emitted an unexpected notification")
         return ResumeSucceeded(notification_kinds=notifications)
     finally:
         shutdown = client.close()
@@ -241,41 +249,6 @@ def test_resume_failures_remain_distinct(
     result = _resume_shared_thread(mode, state_path)
 
     assert isinstance(result, expected_type)
-
-
-@pytest.mark.parametrize(
-    ("mode", "requires_state", "expected_code", "expected_kind"),
-    [
-        ("resume-not-found", False, -32600, "not_found"),
-        ("resume-permission-denied", True, -32603, "permission_denied"),
-        ("resume-invalid-state", True, -32600, "invalid_state"),
-    ],
-)
-def test_resume_error_classification_discards_raw_message(
-    mode: str,
-    requires_state: bool,
-    expected_code: int,
-    expected_kind: str,
-    tmp_path: Path,
-) -> None:
-    state_path = tmp_path / "shared-state"
-    if requires_state:
-        _create_shared_thread(state_path)
-    client = _client(mode, state_path)
-    client.start()
-    try:
-        client.initialize(CLIENT_INFO)
-        with pytest.raises(AppServerResponseError) as captured:
-            client.request("thread/resume", {"threadId": SYNTHETIC_THREAD_ID})
-    finally:
-        shutdown = client.close()
-
-    error = captured.value
-    assert error.code == expected_code
-    assert error.kind == expected_kind
-    assert SYNTHETIC_THREAD_ID not in str(error)
-    assert shutdown.forced is False
-    assert shutdown.exit_code == 0
 
 
 def test_connection_rejects_a_second_hub_before_duplicates_can_split(

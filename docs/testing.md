@@ -38,7 +38,6 @@
 - question受信、host回答、matching resolved、turn完了を合成app-server E2Eで通す
 - approvalとquestionの同時pendingでapprovalを優先し、各resolvedを正しいqueueへ相関してquestion表示へ復帰する
 - experimentalな未知server requestを黙ってdropせず、固定のJSON-RPC `-32601` errorでrequestをfail closedする
-- `thread/resume`の同一error codeをallowlist済みの安全なkindへ分類し、raw messageを保持しない
 
 ## Protocol fixtures
 
@@ -65,8 +64,6 @@ Cardputer-Adv実機では診断firmware v0.1.3を用い、recovery-first復元�
 App-server終了は処理中RPCとthread cleanupをdrainするため、controllerは終了時だけ最大60秒を待ちます。60秒後の強制kill、非0終了、event reader残留はFAILです。
 
 M4 host user-inputはCodex CLI 0.144.6生成schemaと合成app-serverで検証します。Controllerだけが`experimentalApi=true`へopt-inし、複数質問の部分蓄積と一括response、secret no-echo adapter、option/Other相関、pending lifecycle、interrupt時の破棄、Deviceへの`question` attentionを受入対象にします。実Codexで`requestUserInput`を発生させる経路は未検証であり、合成結果を実接続PASSへ昇格しません。
-
-Multi-client / thread resumeは`CARDPUTER_CODEX_LIVE_MULTI_CLIENT=1`のopt-in testで、同一`CODEX_HOME`を共有する独立stdio processを実測します。Persistent test threadは測定後にarchiveし、公開recordにはID、本文、path、生notificationを含めません。Idle・active turn中・旧process終了後のresumeを分け、別processへactive lifecycle通知が配送されないこと、missingとstate errorが同じcodeになること、正常終了のdrain時間を記録します。
 
 Production実機のlocal acceptanceでは、実Codex turnのHOME/RUN、G0 interrupt、host-only cancel、incomplete file approvalのhold・accept禁止・物理decline、stale/reconnectを確認します。完全なlow-risk acceptと複数pendingは、実行処理を持たない2件のlocal fixtureで物理accept、残数、自動送り、物理decline、pending zeroを確認します。Stale状態からのhost接続開始〜active/full snapshotは6秒以内を合格とし、今回のbaselineは1,766msです。実測中に検出したEnter special-key判定と`wait`のapproval/timeout復帰には回帰テストがあります。
 

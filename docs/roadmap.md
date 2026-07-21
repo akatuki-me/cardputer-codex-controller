@@ -4,7 +4,7 @@
 
 stdio接続、lifecycle、thread/turn、model/list、interrupt、accept/decline/resolvedを実測します。実機への書き込みは行いません。
 
-状態: transport、thread/turn、interrupt、approval contract、0.144.6実接続を完了。独立stdio process間のpersistent thread resumeを実測し、単一connection owner方針と安全なresume error分類を確定。共有listenerとpermission errorのlive発生条件は未確認。
+状態: transport、thread/turn、interrupt、approval contract、0.144.6実接続を完了。
 
 ## M1 Recovery and CDC echo
 

@@ -91,11 +91,11 @@ def _run_create(state_path: Path, request: dict[str, Any]) -> int:
     return 0
 
 
-def _write_error(request_id: object, code: int, message: str) -> None:
+def _write_error(request_id: object, code: int) -> None:
     _write(
         {
             "id": request_id,
-            "error": {"code": code, "message": message},
+            "error": {"code": code, "message": "synthetic resume rejected"},
         }
     )
 
@@ -108,23 +108,11 @@ def _run_resume(mode: str, state_path: Path, request: dict[str, Any]) -> int:
         return 31
 
     if mode == "resume-not-found" or not state_path.is_file():
-        _write_error(
-            request.get("id"),
-            -32600,
-            "no rollout found for thread id thread-synthetic-shared",
-        )
+        _write_error(request.get("id"), -32004)
     elif mode == "resume-permission-denied":
-        _write_error(
-            request.get("id"),
-            -32603,
-            "failed to read thread: permission denied",
-        )
+        _write_error(request.get("id"), -32003)
     elif mode == "resume-invalid-state":
-        _write_error(
-            request.get("id"),
-            -32600,
-            "cannot resume thread thread-synthetic-shared with history while it is already running",
-        )
+        _write_error(request.get("id"), -32002)
     else:
         if mode in {"resume-duplicate", "resume-unowned"}:
             notification = _thread_started(

@@ -28,9 +28,9 @@ notificationの重複、所有対象外threadのnotificationは固定文言のer
 | 合成権限拒否 | `permission_denied` | なし |
 | 合成状態拒否 | `invalid_state` | なし |
 
-4つの結果は別のresult classとして保持する。合成fixtureはliveで観測した`-32600`のcode衝突と
-代表的な上流messageを再現し、allowlist分類後にraw messageを破棄する。Permission errorの発生条件は
-live未確認であり、合成分類を実Codexの発生証拠には昇格しない。
+4つの結果は別のresult classとして保持する。合成fixtureのerror codeは分類器の決定論テスト用で
+あり、実Codexのerror codeや発生条件を表す証拠ではない。Permission errorの発生条件はlive未確認で
+あり、合成分類を実Codexの発生証拠には昇格しない。
 
 公開可能なprobe recordは`outcome`と正規化した`notificationKinds`だけである。thread ID、
 workspace path、共有状態file path、thread本文、認証情報、生notification、stderr本文は出力しない。
@@ -44,7 +44,7 @@ workspace path、共有状態file path、thread本文、認証情報、生notifi
 | active turn、starting set、completion tombstone | 失われる | resume responseやread APIから再構築候補 | `AppServerOperations`のconnection-local memory。live probeではactive turnを継承できなかった |
 | persistent thread本体 | 合成fixtureでは保持 | `thread/resume`で再取得 | 独立stdio processのidle・切断後resumeをlive確認 |
 | ephemeral thread本体 | 対象外 | 再取得可能とは扱わない | production controllerは現在ephemeralを使用 |
-| notification ownership | connection終了で失われる | client Bが新しい単一dispatcherを所有 | resume responseは得られるが、別stdio processのlifecycle通知は配送されない |
+| notification ownership | connection終了で失われる | client Bが新しい単一dispatcherを所有 | resume responseは得られるが、別stdio processのlifecycle通知は1秒・3秒の観測窓内では配送されなかった |
 
 transport request、pending response、通知queue、active turn台帳をconnection間で暗黙に引き継ぐ
 設計にはしない。live probeで確認したproduction ownership modelは後述する。
@@ -56,7 +56,7 @@ $env:PYTHONPATH = "bridge"
 python -m pytest -q bridge/tests/app_server/test_multi_client_resume_probe.py
 ```
 
-2026-07-21の結果は`13 passed`。次を確認した。
+2026-07-21の結果は`10 passed`。次を確認した。
 
 - client A切断後にclient Bが共有された合成threadをresumeする
 - 成功、不在、権限拒否、状態拒否を混同しない
@@ -84,21 +84,21 @@ python -m pytest -q -s bridge/tests/app_server/test_live_multi_client_resume.py
 
 | scenario | resume結果 | responseのthread状態 | notification |
 | --- | --- | --- | --- |
-| primary完了後、別processからresume | 成功 | `idle`、既存turnは`completed` | `thread/started`なし |
-| primaryでturn実行中、別processからresume | 成功 | `idle`、実行中turnは`interrupted`として再構築 | primaryの`turn/completed`は配送されない |
-| primary終了後、新processからresume | 成功 | `idle`、`completed`と`interrupted`を再取得 | `thread/started`なし |
-| 存在しないthread ID | error `-32600` / `not_found` | なし | なし |
-| loaded threadへhistory付きresume | error `-32600` / `invalid_state` | なし | なし |
+| primary完了後、別processからresume | 成功 | `idle`、既存turnは`completed` | 1秒の観測窓で`thread/started`なし |
+| primaryでturn実行中、別processからresume | 成功 | `idle`、実行中turnは`interrupted`として再構築 | 3秒の観測窓でprimaryの`turn/completed`なし |
+| primary終了後、新processからresume | 成功 | `idle`、`completed`と`interrupted`を再取得 | 1秒の観測窓で`thread/started`なし |
+| 存在しないthread ID | error `-32600`（不在scenario） | なし | なし |
+| loaded threadへhistory付きresume | error `-32600`（loaded-state scenario） | なし | なし |
 
 Resumeした各connectionの`thread/unsubscribe`は`unsubscribed`を返し、test threadのarchive responseも
 確認した。App-serverは強制終了せずexit code 0で閉じたが、反復実測した終了時間は
-9,312〜42,187 msだった。したがってunsubscribeを即時process終了の証拠として扱わず、
+9,312〜45,343 msだった。したがってunsubscribeを即時process終了の証拠として扱わず、
 controller shutdownのdrain上限を維持する。
 
 ## Ownership decision
 
-独立stdio processはpersistent threadを再取得できるが、同時に動く別processのactive turnと
-notification streamを共有しない。Bridgeは次を初期ownership modelとする。
+独立stdio processはpersistent threadを再取得できるが、live probeの観測窓では同時に動く
+別processのactive turnとnotification streamを共有しなかった。Bridgeは次を初期ownership modelとする。
 
 1. 1 controller processが1 app-server stdio processと1 notification dispatcherを排他的に所有する。
 2. 同じpersistent threadへ複数の独立stdio processから同時に操作しない。
@@ -108,7 +108,7 @@ notification streamを共有しない。Bridgeは次を初期ownership modelと�
 
 ## Confirmed / inference / unconfirmed
 
-- Confirmed: 独立stdio process間のidle・running・切断後resume、通知非fan-out、終了時間、error code。
+- Confirmed: 独立stdio process間のidle・running・切断後resume、1秒・3秒の観測窓内の通知非fan-out、終了時間、error code。
 - Inference: 単一ownerと旧process終了後のresumeが、初期USB controllerに最も単純で安全な構成である。
 - Unconfirmed: 1つの共有app-server listenerへ複数connectionを張る場合のfan-outとwriter制御、
   別account・権限境界でのpermission error。
@@ -116,7 +116,6 @@ notification streamを共有しない。Bridgeは次を初期ownership modelと�
 ## Issue #5へ残すgap
 
 Missingとstate errorはどちらも`-32600`であるため、codeだけではruntime分類できない。
-`AppServerClient`は0.144.6の上流messageをallowlistで`not_found`、`invalid_state`、
-`permission_denied`へ変換し、raw messageを例外や公開recordへ保持しない。未一致は`unclassified`で
-fail closedにする。共有listenerとpermission errorのlive発生条件は未実測であり、初期stdio
-ownershipのNonGoalとして外部化するかを決める。
+現行`AppServerResponseError`はraw messageを保持せずcodeだけを返すため、安全なruntime分類は
+未実装として扱う。分類方式、共有listener、permission errorのlive発生条件をIssue #5に残し、
+初期stdio ownershipのNonGoalとして外部化するかを決める。
