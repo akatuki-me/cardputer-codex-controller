@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from cardputer_codex_bridge.models import ThreadId, TurnId
 
 from .types import RequestId
+
+type AppServerResponseErrorKind = Literal[
+    "invalid_state",
+    "not_found",
+    "permission_denied",
+    "unclassified",
+]
 
 
 class AppServerError(RuntimeError):
@@ -50,7 +59,16 @@ class AppServerVersionMismatch(AppServerProtocolError):
 
 
 class AppServerResponseError(AppServerError):
-    def __init__(self, *, request_id: RequestId, code: int) -> None:
+    def __init__(
+        self,
+        *,
+        request_id: RequestId,
+        code: int,
+        kind: AppServerResponseErrorKind = "unclassified",
+    ) -> None:
         self.request_id = request_id
         self.code = code
-        super().__init__(f"app-server request {request_id!r} failed with code {code}")
+        self.kind = kind
+        super().__init__(
+            f"app-server request {request_id!r} failed with code {code} ({kind})"
+        )

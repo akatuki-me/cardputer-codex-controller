@@ -1,9 +1,9 @@
-# M0 multi-client / thread resume合成probe
+# M0 multi-client / thread resume probe
 
 ## 判定範囲
 
-この文書は、Codex CLI 0.144.6生成schemaの`thread/resume`形状を基準にした、
-決定論的な合成probeの証拠である。認証済みCodexのmulti-client挙動を実測した記録ではない。
+この文書は、Codex CLI 0.144.6生成schemaを基準にした決定論的な合成probeと、
+認証済みCodexを使った独立stdio process間のlive probeを分けて記録する。
 
 probeはproduction bridgeを変更せず、2つの独立した`AppServerClient`と合成app-server
 processを使う。client Aが非ephemeralな合成threadを作成して切断し、client Bが同じ合成状態を
@@ -13,7 +13,7 @@ thread本文や認証情報は保持しない。
 ## 合成method sequence
 
 1. client A: `initialize` → `thread/start` → `thread/started`観測 → 切断
-2. client B: `initialize` → `thread/resume` → `thread/started`観測 → 切断
+2. client B: `initialize` → `thread/resume` response観測 → 切断
 
 両connectionは別processであり、client Aのtransportやin-memory台帳をclient Bへ渡さない。
 通知は各connectionにつき1つの`NotificationHub`だけが取得する。2つ目のconsumer、同じ
@@ -23,13 +23,14 @@ notificationの重複、所有対象外threadのnotificationは固定文言のer
 
 | scenario | probe結果 | notification |
 | --- | --- | --- |
-| 共有状態あり | `resumed` | `thread_started`を1回 |
+| 共有状態あり | `resumed` | なし |
 | 共有状態なし | `not_found` | なし |
 | 合成権限拒否 | `permission_denied` | なし |
 | 合成状態拒否 | `invalid_state` | なし |
 
-4つの結果は別のresult classとして保持する。合成fixtureのerror codeは分類器の決定論テスト用で
-あり、実Codexのerror codeや発生条件を表す証拠ではない。
+4つの結果は別のresult classとして保持する。合成fixtureはliveで観測した`-32600`のcode衝突と
+代表的な上流messageを再現し、allowlist分類後にraw messageを破棄する。Permission errorの発生条件は
+live未確認であり、合成分類を実Codexの発生証拠には昇格しない。
 
 公開可能なprobe recordは`outcome`と正規化した`notificationKinds`だけである。thread ID、
 workspace path、共有状態file path、thread本文、認証情報、生notification、stderr本文は出力しない。
@@ -40,14 +41,13 @@ workspace path、共有状態file path、thread本文、認証情報、生notifi
 | --- | --- | --- | --- |
 | JSON-RPC request IDとpending response queue | 失われる | 再利用しない | `AppServerClient`のconnection-local memory |
 | inbound notification queue | 失われる | 新connectionで新規購読 | `AppServerClient`のconnection-local memory |
-| active turn、starting set、completion tombstone | 失われる | resume responseやread APIから再構築候補 | `AppServerOperations`のconnection-local memory。再構築は未実装 |
-| persistent thread本体 | 合成fixtureでは保持 | `thread/resume`で再取得候補 | 合成PASSのみ。live未確認 |
+| active turn、starting set、completion tombstone | 失われる | resume responseやread APIから再構築候補 | `AppServerOperations`のconnection-local memory。live probeではactive turnを継承できなかった |
+| persistent thread本体 | 合成fixtureでは保持 | `thread/resume`で再取得 | 独立stdio processのidle・切断後resumeをlive確認 |
 | ephemeral thread本体 | 対象外 | 再取得可能とは扱わない | production controllerは現在ephemeralを使用 |
-| notification ownership | connection終了で失われる | client Bが新しい単一dispatcherを所有 | 合成collector契約 |
+| notification ownership | connection終了で失われる | client Bが新しい単一dispatcherを所有 | resume responseは得られるが、別stdio processのlifecycle通知は配送されない |
 
-このmatrixから、Bridgeのproduction ownership modelを確定することはまだできない。少なくとも
 transport request、pending response、通知queue、active turn台帳をconnection間で暗黙に引き継ぐ
-設計にはしない。persistent threadの再取得可否と必要なstate再構築はlive probeの結果で決める。
+設計にはしない。live probeで確認したproduction ownership modelは後述する。
 
 ## Local acceptance
 
@@ -56,7 +56,7 @@ $env:PYTHONPATH = "bridge"
 python -m pytest -q bridge/tests/app_server/test_multi_client_resume_probe.py
 ```
 
-2026-07-20の結果は`10 passed`。次を確認した。
+2026-07-21の結果は`13 passed`。次を確認した。
 
 - client A切断後にclient Bが共有された合成threadをresumeする
 - 成功、不在、権限拒否、状態拒否を混同しない
@@ -67,14 +67,56 @@ python -m pytest -q bridge/tests/app_server/test_multi_client_resume_probe.py
 
 実機、serial port、firmware、認証済みCodex connectionは使用していない。
 
-## Issue #5へ残すlive probe
+## 認証済みCodex live probe
 
-Issue #5をcloseする前に、認証済みCodexで次を実測する。
+2026-07-21にCodex CLI 0.144.6、同一account、同一`CODEX_HOME`を共有する独立した
+app-server stdio processで実測した。専用の一時workspace、`sandbox=read-only`、
+`approvalPolicy=never`を使用し、persistent test threadは測定後にarchiveした。
 
-- 1つのpersistent test threadへ複数clientが関与できる条件
-- running / idle / missing threadごとの`thread/resume`応答とerrorの意味
-- resume時にどのclientへどのnotificationが配送されるか
-- 切断後に再取得できるthread / turn状態と、再構築できないconnection-local状態
-- 観測結果に基づくBridgeの推奨connection・thread ownership model
+```powershell
+$env:CARDPUTER_CODEX_LIVE_MULTI_CLIENT = "1"
+$env:PYTHONPATH = "bridge"
+python -m pytest -q -s bridge/tests/app_server/test_live_multi_client_resume.py
+```
 
-live probeでも実thread ID、本文、workspace path、認証情報、生notificationは保存しない。
+結果は`1 passed`。公開recordはstatus、error code、正規化したnotification kind、shutdown時間だけを
+出力し、thread/turn ID、本文、workspace path、認証情報、生notification、stderr本文を含めない。
+
+| scenario | resume結果 | responseのthread状態 | notification |
+| --- | --- | --- | --- |
+| primary完了後、別processからresume | 成功 | `idle`、既存turnは`completed` | `thread/started`なし |
+| primaryでturn実行中、別processからresume | 成功 | `idle`、実行中turnは`interrupted`として再構築 | primaryの`turn/completed`は配送されない |
+| primary終了後、新processからresume | 成功 | `idle`、`completed`と`interrupted`を再取得 | `thread/started`なし |
+| 存在しないthread ID | error `-32600` / `not_found` | なし | なし |
+| loaded threadへhistory付きresume | error `-32600` / `invalid_state` | なし | なし |
+
+Resumeした各connectionの`thread/unsubscribe`は`unsubscribed`を返し、test threadのarchive responseも
+確認した。App-serverは強制終了せずexit code 0で閉じたが、反復実測した終了時間は
+9,312〜42,187 msだった。したがってunsubscribeを即時process終了の証拠として扱わず、
+controller shutdownのdrain上限を維持する。
+
+## Ownership decision
+
+独立stdio processはpersistent threadを再取得できるが、同時に動く別processのactive turnと
+notification streamを共有しない。Bridgeは次を初期ownership modelとする。
+
+1. 1 controller processが1 app-server stdio processと1 notification dispatcherを排他的に所有する。
+2. 同じpersistent threadへ複数の独立stdio processから同時に操作しない。
+3. 再接続は旧processの終了を確認してから新processを起動し、`thread/resume` responseからthreadを再構築する。
+4. 切断時のactive turnは継続中と推測せず、resume responseまたは`thread/read`で再確認する。
+5. Resume成功時の`thread/started`を期待せず、request responseを再取得完了の正本とする。
+
+## Confirmed / inference / unconfirmed
+
+- Confirmed: 独立stdio process間のidle・running・切断後resume、通知非fan-out、終了時間、error code。
+- Inference: 単一ownerと旧process終了後のresumeが、初期USB controllerに最も単純で安全な構成である。
+- Unconfirmed: 1つの共有app-server listenerへ複数connectionを張る場合のfan-outとwriter制御、
+  別account・権限境界でのpermission error。
+
+## Issue #5へ残すgap
+
+Missingとstate errorはどちらも`-32600`であるため、codeだけではruntime分類できない。
+`AppServerClient`は0.144.6の上流messageをallowlistで`not_found`、`invalid_state`、
+`permission_denied`へ変換し、raw messageを例外や公開recordへ保持しない。未一致は`unclassified`で
+fail closedにする。共有listenerとpermission errorのlive発生条件は未実測であり、初期stdio
+ownershipのNonGoalとして外部化するかを決める。

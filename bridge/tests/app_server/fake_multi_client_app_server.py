@@ -91,11 +91,11 @@ def _run_create(state_path: Path, request: dict[str, Any]) -> int:
     return 0
 
 
-def _write_error(request_id: object, code: int) -> None:
+def _write_error(request_id: object, code: int, message: str) -> None:
     _write(
         {
             "id": request_id,
-            "error": {"code": code, "message": "synthetic resume rejected"},
+            "error": {"code": code, "message": message},
         }
     )
 
@@ -108,18 +108,31 @@ def _run_resume(mode: str, state_path: Path, request: dict[str, Any]) -> int:
         return 31
 
     if mode == "resume-not-found" or not state_path.is_file():
-        _write_error(request.get("id"), -32004)
-    elif mode == "resume-permission-denied":
-        _write_error(request.get("id"), -32003)
-    elif mode == "resume-invalid-state":
-        _write_error(request.get("id"), -32002)
-    else:
-        notification = _thread_started(
-            FOREIGN_THREAD_ID if mode == "resume-unowned" else SYNTHETIC_THREAD_ID
+        _write_error(
+            request.get("id"),
+            -32600,
+            "no rollout found for thread id thread-synthetic-shared",
         )
-        _write(notification)
-        if mode == "resume-duplicate":
+    elif mode == "resume-permission-denied":
+        _write_error(
+            request.get("id"),
+            -32603,
+            "failed to read thread: permission denied",
+        )
+    elif mode == "resume-invalid-state":
+        _write_error(
+            request.get("id"),
+            -32600,
+            "cannot resume thread thread-synthetic-shared with history while it is already running",
+        )
+    else:
+        if mode in {"resume-duplicate", "resume-unowned"}:
+            notification = _thread_started(
+                FOREIGN_THREAD_ID if mode == "resume-unowned" else SYNTHETIC_THREAD_ID
+            )
             _write(notification)
+            if mode == "resume-duplicate":
+                _write(notification)
         _write({"id": request.get("id"), "result": _resume_result()})
 
     sys.stdin.read()

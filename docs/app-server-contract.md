@@ -6,6 +6,11 @@
 
 0.144.6では本bridgeが使用するcommand/file approval responseに加え、`ToolRequestUserInputParams`と`ToolRequestUserInputResponse`をschemaで確認しました。一方、実app-serverのcommand approval requestでは`availableDecisions`、`commandActions`、`environmentId`、amendment関連fieldが提示される場合があります。Bridgeは未知fieldを保持し、response schemaだけからdevice表示可否を推測しません。それ以外のversionは引き続きinitialize時に拒否します。
 
+`thread/resume`のresponse errorはcodeだけで分類しません。0.144.6ではmissingとloaded-state競合が
+どちらも`-32600`になるため、Bridgeは上流messageをallowlistで`not_found`、`invalid_state`、
+`permission_denied`へ変換し、raw messageを保持・表示しません。既知patternに一致しないerrorは
+`unclassified`として呼出側へ返し、別の意味へ推測変換しません。
+
 ## Connection
 
 - transportはstdio JSONL

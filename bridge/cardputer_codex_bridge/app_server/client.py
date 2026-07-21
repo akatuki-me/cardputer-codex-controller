@@ -16,6 +16,7 @@ from .errors import (
     AppServerError,
     AppServerProtocolError,
     AppServerResponseError,
+    AppServerResponseErrorKind,
     AppServerShutdownError,
     AppServerStartError,
     AppServerStateError,
@@ -72,6 +73,33 @@ _SENSITIVE_ENV_NAMES = {
 }
 _MAX_STDOUT_LINE_CHARS = 16 * 1024 * 1024
 _MAX_STDERR_LINE_CHARS = 64 * 1024
+
+
+def _classify_response_error(
+    method: str,
+    message: object,
+) -> AppServerResponseErrorKind:
+    if method != "thread/resume" or not isinstance(message, str):
+        return "unclassified"
+    normalized = message.casefold()
+    if normalized.startswith("no rollout found for thread id "):
+        return "not_found"
+    if (
+        normalized.startswith("cannot resume thread ")
+        or normalized.startswith("cannot resume running thread ")
+        or (
+            normalized.startswith("thread ")
+            and " is closing; retry thread/resume" in normalized
+        )
+        or (normalized.startswith("session ") and " is archived." in normalized)
+    ):
+        return "invalid_state"
+    if any(
+        marker in normalized
+        for marker in ("permission denied", "access denied", "access is denied")
+    ):
+        return "permission_denied"
+    return "unclassified"
 
 
 def codex_app_server_command(executable: str | None = None) -> tuple[str, ...]:
@@ -441,7 +469,11 @@ class AppServerClient:
                 protocol_error = AppServerProtocolError("response error code must be an integer")
                 self._set_fatal(protocol_error)
                 raise protocol_error
-            raise AppServerResponseError(request_id=request_id, code=code)
+            raise AppServerResponseError(
+                request_id=request_id,
+                code=code,
+                kind=_classify_response_error(method, error.get("message")),
+            )
         return response["result"]
 
     def _write_message(self, message: JsonObject) -> None:

@@ -154,11 +154,11 @@ def _create_shared_thread(state_path: Path) -> ResumeSucceeded:
 
 
 def _classify_resume_error(error: AppServerResponseError) -> ResumeProbeResult:
-    if error.code == -32004:
+    if error.kind == "not_found":
         return ResumeNotFound()
-    if error.code == -32003:
+    if error.kind == "permission_denied":
         return ResumePermissionDenied()
-    if error.code == -32002:
+    if error.kind == "invalid_state":
         return ResumeInvalidState()
     raise ProbeContractError("resume error is not classified") from error
 
@@ -167,7 +167,7 @@ def _resume_shared_thread(
     mode: str,
     state_path: Path,
     *,
-    notification_count: int = 1,
+    notification_count: int = 0,
 ) -> ResumeProbeResult:
     client = _client(mode, state_path)
     client.start()
@@ -181,10 +181,12 @@ def _resume_shared_thread(
         except AppServerResponseError as error:
             return _classify_resume_error(error)
         thread_id = _response_thread_id(result)
-        notifications = NotificationHub(
-            client,
-            owned_thread_id=thread_id,
-        ).claim_consumer().collect(notification_count)
+        notifications: tuple[str, ...] = ()
+        if notification_count:
+            notifications = NotificationHub(
+                client,
+                owned_thread_id=thread_id,
+            ).claim_consumer().collect(notification_count)
         return ResumeSucceeded(notification_kinds=notifications)
     finally:
         shutdown = client.close()
@@ -215,7 +217,7 @@ def test_client_b_resumes_shared_thread_after_client_a_disconnect(
 
     assert created.notification_kinds == ("thread_started",)
     assert isinstance(resumed, ResumeSucceeded)
-    assert resumed.notification_kinds == ("thread_started",)
+    assert resumed.notification_kinds == ()
 
 
 @pytest.mark.parametrize(
@@ -239,6 +241,41 @@ def test_resume_failures_remain_distinct(
     result = _resume_shared_thread(mode, state_path)
 
     assert isinstance(result, expected_type)
+
+
+@pytest.mark.parametrize(
+    ("mode", "requires_state", "expected_code", "expected_kind"),
+    [
+        ("resume-not-found", False, -32600, "not_found"),
+        ("resume-permission-denied", True, -32603, "permission_denied"),
+        ("resume-invalid-state", True, -32600, "invalid_state"),
+    ],
+)
+def test_resume_error_classification_discards_raw_message(
+    mode: str,
+    requires_state: bool,
+    expected_code: int,
+    expected_kind: str,
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "shared-state"
+    if requires_state:
+        _create_shared_thread(state_path)
+    client = _client(mode, state_path)
+    client.start()
+    try:
+        client.initialize(CLIENT_INFO)
+        with pytest.raises(AppServerResponseError) as captured:
+            client.request("thread/resume", {"threadId": SYNTHETIC_THREAD_ID})
+    finally:
+        shutdown = client.close()
+
+    error = captured.value
+    assert error.code == expected_code
+    assert error.kind == expected_kind
+    assert SYNTHETIC_THREAD_ID not in str(error)
+    assert shutdown.forced is False
+    assert shutdown.exit_code == 0
 
 
 def test_connection_rejects_a_second_hub_before_duplicates_can_split(
@@ -357,7 +394,11 @@ def test_unowned_notification_fails_closed(tmp_path: Path) -> None:
     _create_shared_thread(state_path)
 
     with pytest.raises(ProbeContractError, match="owner is unknown"):
-        _resume_shared_thread("resume-unowned", state_path)
+        _resume_shared_thread(
+            "resume-unowned",
+            state_path,
+            notification_count=1,
+        )
 
 
 def test_public_record_excludes_thread_and_environment_details(tmp_path: Path) -> None:
@@ -369,7 +410,7 @@ def test_public_record_excludes_thread_and_environment_details(tmp_path: Path) -
 
     assert isinstance(created, ResumeSucceeded)
     assert record == (
-        '{"notificationKinds": ["thread_started"], "outcome": "resumed"}'
+        '{"notificationKinds": [], "outcome": "resumed"}'
     )
     assert SYNTHETIC_THREAD_ID not in record
     assert str(state_path) not in record
