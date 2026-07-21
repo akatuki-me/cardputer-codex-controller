@@ -256,12 +256,49 @@ def _archive_best_effort(thread_id: str) -> None:
     try:
         cleanup = _open_client()
         cleanup.request("thread/archive", {"threadId": thread_id}, timeout=30.0)
-    except AppServerError:
+    except (AppServerError, LiveProbeContractError):
         pass
     finally:
         if cleanup is not None:
             with suppress(AppServerError):
                 cleanup.close()
+
+
+def test_archive_best_effort_suppresses_open_contract_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_open() -> AppServerClient:
+        raise LiveProbeContractError("cleanup contract failure")
+
+    monkeypatch.setitem(globals(), "_open_client", fail_open)
+
+    _archive_best_effort("cleanup-thread")
+
+
+def test_archive_best_effort_suppresses_request_contract_error_and_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ContractFailingCleanup:
+        closed = False
+
+        def request(
+            self,
+            method: str,
+            params: JsonObject,
+            *,
+            timeout: float,
+        ) -> JsonValue:
+            raise LiveProbeContractError("cleanup request contract failure")
+
+        def close(self) -> None:
+            self.closed = True
+
+    cleanup = ContractFailingCleanup()
+    monkeypatch.setitem(globals(), "_open_client", lambda: cleanup)
+
+    _archive_best_effort("cleanup-thread")
+
+    assert cleanup.closed is True
 
 
 def _archive(thread_id: str) -> None:
