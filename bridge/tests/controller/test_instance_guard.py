@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cardputer_codex_bridge.controller import instance_guard as instance_guard_module
 from cardputer_codex_bridge.controller.instance_guard import (
     ControllerAlreadyRunningError,
     ControllerInstanceGuard,
@@ -105,3 +106,21 @@ def test_operating_system_releases_guard_after_process_termination(
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5.0)
+
+
+def test_default_lock_path_is_user_scoped_and_private(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(instance_guard_module.tempfile, "gettempdir", lambda: str(tmp_path))
+
+    lock_path = instance_guard_module._default_lock_path()
+
+    assert lock_path.name == "controller.lock"
+    lock_directory = lock_path.parent
+    assert lock_directory.parent == tmp_path
+    assert lock_directory != tmp_path
+    assert lock_directory.name.startswith("cardputer-codex-controller-")
+    assert lock_directory.is_dir()
+    if os.name != "nt":
+        assert (lock_directory.stat().st_mode & 0o777) == 0o700

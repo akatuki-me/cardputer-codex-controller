@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import importlib
 import os
 import tempfile
@@ -77,7 +78,30 @@ class ControllerInstanceGuard:
 
 
 def _default_lock_path() -> Path:
-    return Path(tempfile.gettempdir()) / "cardputer-codex-controller" / "controller.lock"
+    return _user_lock_directory() / "controller.lock"
+
+
+def _user_lock_directory() -> Path:
+    """他userが先取り・すり替えできないuser専用のlock directoryを返す。"""
+    directory = Path(tempfile.gettempdir()) / f"cardputer-codex-controller-{_user_scope()}"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name != "nt":
+        with suppress(OSError):
+            os.chmod(directory, 0o700)
+    return directory
+
+
+def _user_scope() -> str:
+    """共有tmp配下の固定名衝突を避けるためのuser固有識別子。"""
+    getuid = getattr(os, "getuid", None)
+    if getuid is not None:
+        with suppress(OSError):
+            return str(getuid())
+    with suppress(Exception):
+        name = getpass.getuser()
+        if name:
+            return "".join(char if char.isalnum() else "_" for char in name)
+    return "default"
 
 
 def _lock(stream: BinaryIO) -> None:

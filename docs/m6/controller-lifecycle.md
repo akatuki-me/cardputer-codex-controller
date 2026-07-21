@@ -4,7 +4,7 @@
 
 ## 単一起動
 
-Lockはuser localの一時directoryに置く1 byteのfileへ、Windowsでは`msvcrt.locking`、POSIXでは`flock`を適用します。所有権はfileの内容ではなくOS lockにあり、PID、port、command、cwdを保存しません。Lock file自体は再利用し、正常終了時に削除しません。
+Lockはuser固有の一時sub directory（POSIXはUID、Windowsはuser名でscopeし、`0700`で作成）へ置く1 byteのfileへ、Windowsでは`msvcrt.locking`、POSIXでは`flock`を適用します。共有tmp直下の固定名を避けることで、別userによる先取りやsymlinkすり替えを防ぎます。所有権はfileの内容ではなくOS lockにあり、PID、port、command、cwdを保存しません。Lock file自体は再利用し、正常終了時に削除しません。
 
 2つ目のprocessはproviderを生成せず、serial I/OとCodex app-serverを開始する前に拒否されます。公開stderrは次の固定値だけです。
 
