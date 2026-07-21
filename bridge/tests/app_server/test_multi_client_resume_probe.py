@@ -13,6 +13,7 @@ import pytest
 from cardputer_codex_bridge.app_server import (
     AppServerClient,
     AppServerResponseError,
+    AppServerTimeoutError,
     ClientInfo,
 )
 
@@ -163,11 +164,19 @@ def _classify_resume_error(error: AppServerResponseError) -> ResumeProbeResult:
     raise ProbeContractError("resume error is not classified") from error
 
 
+def _require_no_notification(client: AppServerClient) -> None:
+    try:
+        client.next_message(timeout=0.2)
+    except AppServerTimeoutError:
+        return
+    raise ProbeContractError("resume emitted an unexpected notification")
+
+
 def _resume_shared_thread(
     mode: str,
     state_path: Path,
     *,
-    notification_count: int = 1,
+    notification_count: int = 0,
 ) -> ResumeProbeResult:
     client = _client(mode, state_path)
     client.start()
@@ -179,12 +188,18 @@ def _resume_shared_thread(
                 {"threadId": SYNTHETIC_THREAD_ID},
             )
         except AppServerResponseError as error:
-            return _classify_resume_error(error)
+            classified = _classify_resume_error(error)
+            _require_no_notification(client)
+            return classified
         thread_id = _response_thread_id(result)
-        notifications = NotificationHub(
-            client,
-            owned_thread_id=thread_id,
-        ).claim_consumer().collect(notification_count)
+        notifications: tuple[str, ...] = ()
+        if notification_count:
+            notifications = NotificationHub(
+                client,
+                owned_thread_id=thread_id,
+            ).claim_consumer().collect(notification_count)
+        else:
+            _require_no_notification(client)
         return ResumeSucceeded(notification_kinds=notifications)
     finally:
         shutdown = client.close()
@@ -215,7 +230,7 @@ def test_client_b_resumes_shared_thread_after_client_a_disconnect(
 
     assert created.notification_kinds == ("thread_started",)
     assert isinstance(resumed, ResumeSucceeded)
-    assert resumed.notification_kinds == ("thread_started",)
+    assert resumed.notification_kinds == ()
 
 
 @pytest.mark.parametrize(
@@ -239,6 +254,14 @@ def test_resume_failures_remain_distinct(
     result = _resume_shared_thread(mode, state_path)
 
     assert isinstance(result, expected_type)
+
+
+def test_error_response_with_notification_fails_closed(tmp_path: Path) -> None:
+    with pytest.raises(ProbeContractError, match="unexpected notification"):
+        _resume_shared_thread(
+            "resume-not-found-with-notification",
+            tmp_path / "shared-state",
+        )
 
 
 def test_connection_rejects_a_second_hub_before_duplicates_can_split(
@@ -357,7 +380,11 @@ def test_unowned_notification_fails_closed(tmp_path: Path) -> None:
     _create_shared_thread(state_path)
 
     with pytest.raises(ProbeContractError, match="owner is unknown"):
-        _resume_shared_thread("resume-unowned", state_path)
+        _resume_shared_thread(
+            "resume-unowned",
+            state_path,
+            notification_count=1,
+        )
 
 
 def test_public_record_excludes_thread_and_environment_details(tmp_path: Path) -> None:
@@ -369,7 +396,7 @@ def test_public_record_excludes_thread_and_environment_details(tmp_path: Path) -
 
     assert isinstance(created, ResumeSucceeded)
     assert record == (
-        '{"notificationKinds": ["thread_started"], "outcome": "resumed"}'
+        '{"notificationKinds": [], "outcome": "resumed"}'
     )
     assert SYNTHETIC_THREAD_ID not in record
     assert str(state_path) not in record

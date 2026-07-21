@@ -107,19 +107,23 @@ def _run_resume(mode: str, state_path: Path, request: dict[str, Any]) -> int:
     if not isinstance(params, dict) or params.get("threadId") != SYNTHETIC_THREAD_ID:
         return 31
 
-    if mode == "resume-not-found" or not state_path.is_file():
+    if mode == "resume-not-found-with-notification":
+        _write(_thread_started())
+        _write_error(request.get("id"), -32004)
+    elif mode == "resume-not-found" or not state_path.is_file():
         _write_error(request.get("id"), -32004)
     elif mode == "resume-permission-denied":
         _write_error(request.get("id"), -32003)
     elif mode == "resume-invalid-state":
         _write_error(request.get("id"), -32002)
     else:
-        notification = _thread_started(
-            FOREIGN_THREAD_ID if mode == "resume-unowned" else SYNTHETIC_THREAD_ID
-        )
-        _write(notification)
-        if mode == "resume-duplicate":
+        if mode in {"resume-duplicate", "resume-unowned"}:
+            notification = _thread_started(
+                FOREIGN_THREAD_ID if mode == "resume-unowned" else SYNTHETIC_THREAD_ID
+            )
             _write(notification)
+            if mode == "resume-duplicate":
+                _write(notification)
         _write({"id": request.get("id"), "result": _resume_result()})
 
     sys.stdin.read()
