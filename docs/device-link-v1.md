@@ -69,4 +69,4 @@ Deviceの`accept`表示条件は、server提示または固定version fallback�
 
 `contentComplete=false`または`riskClass=high`の場合、device側の`accept`を削除し、`decline`とhost escalationだけを提供します。
 
-4096 byteへ収めるためapproval本文を切り詰めたbridgeは、必ず`contentComplete=false`を設定します。Pending正本には切り詰め前のpayloadを保持し、host response surfaceだけが全文確認後のacceptを提供します。Device表示の断片から全文を推測したり、`contentComplete=true`へ戻したりしてはいけません。
+`lines`の各要素はfirmwareが1行に描画できる38 UTF-8 bytes以下とし、文字の途中で分割しません。8行へ収まらない場合または4096 byteへ収めるためapproval本文を切り詰めた場合、bridgeは必ず`contentComplete=false`を設定します。Pending正本には切り詰め前のpayloadを保持し、host response surfaceだけが全文確認後のacceptを提供します。Device表示の断片から全文を推測したり、`contentComplete=true`へ戻したりしてはいけません。

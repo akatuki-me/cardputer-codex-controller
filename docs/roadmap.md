@@ -22,7 +22,7 @@ app-server eventからhost state、device-link、実機SCR-HOMEまでの縦串�
 
 安全guard、pending queue、host response surface、deviceのaccept/decline/hold、interruptを統合します。この段階を実用MVPとします。
 
-状態: 実Codexとproduction実機でhost cancel、物理accept/decline/hold、accept禁止guard、複数pending、自動送りを完了。300ms早押し境界、長文scroll、high-risk表示は追加受入として残す。
+状態: 実Codexとproduction実機でhost cancel、物理accept/decline/hold、accept禁止guard、複数pending、自動送りを完了。追加fixtureによる300ms早押し境界、6行本文scroll、high-riskと本文不完全のaccept非表示も受入済み。
 
 ## M4 Interaction
 

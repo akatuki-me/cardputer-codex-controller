@@ -23,7 +23,8 @@ type HostDecision = Literal["accept", "decline", "cancel"]
 type DeviceApprovalSender = Callable[[DeviceApproval, int], bool]
 type DeviceResolvedSender = Callable[[str, str | None], bool]
 
-_DISPLAY_LINE_BYTES = 60
+# firmwareのapproval描画上限（`%.38s`）を超えない。
+_DISPLAY_LINE_BYTES = 38
 _DISPLAY_MAX_LINES = 8
 _DISPLAY_CWD_BYTES = 48
 _FALLBACK_VERSIONS = frozenset({"0.144.5", "0.144.6"})
