@@ -261,6 +261,22 @@ def test_long_utf8_payload_is_bounded_and_republish_restores_current_state() -> 
     assert approval.content_complete is False
     assert device_decisions(approval) == ("decline",)
     assert len(approval.lines) == 8
-    assert all(len(line.encode("utf-8")) <= 60 for line in approval.lines)
+    assert all(len(line.encode("utf-8")) <= 38 for line in approval.lines)
     assert coordinator.republish() is True
     assert recorder.approvals[-1][0] == approval
+
+
+def test_device_lines_preserve_utf8_content_within_firmware_render_width() -> None:
+    recorder = Recorder()
+    coordinator = _coordinator(recorder)
+    command = "a" * 37 + "界" + "tail"
+
+    coordinator.handle_message(_command_message("rpc-display-width", command=command))
+
+    approval = recorder.approvals[-1][0]
+    assert approval.content_complete is True
+    assert device_decisions(approval) == ("accept", "decline")
+    assert "".join(approval.lines) == command
+    assert approval.lines[0] == "a" * 37
+    assert approval.lines[1] == "界tail"
+    assert all(len(line.encode("utf-8")) <= 38 for line in approval.lines)

@@ -11,6 +11,7 @@ App-server request、host pending正本、device表示、host/device response、
 - Response送信後もresolvedまではpendingと`sending`を維持する
 - 同一IDの再送で300ms guard、scroll、最下端到達、選択、sendingを維持する
 - `contentComplete=false`または`riskClass=high`ではdevice acceptを削除する
+- Device表示用本文を1行38 UTF-8 bytes以下・最大8行に分割し、表示できない内容があれば`contentComplete=false`にする
 - Server提示decisionを上限とし、`decline`と`cancel`を変換しない
 - Hostが追加semantic contextを完全表示できないrequestではhost acceptも禁止する
 - 再接続時はpending正本からfull approval snapshotを再発行する
@@ -55,6 +56,33 @@ Codex CLI 0.144.6の実command approvalでは、文字列decisionとamendment ob
 
 Production firmwareの書き込み、自動reset、最初の実port open、実Codex controller E2Eまで完了しています。実測で検出したEnter special-key判定と`wait`のapproval/timeout復帰を修正し、再書き込み後に物理操作を再受入しました。
 
+## Issue #18 hardening fixture
+
+`cardputer-codex-controller approval-fixture`はCodex app-serverとcommand executorを起動せず、1行38 bytes以下の固定ASCII本文を持つ無害な3 fixtureだけをproduction device-linkへ送ります。
+
+- 6行の完全・low-risk: 表示直後300ms未満と本文末尾未到達ではdecisionなし、末尾到達後だけaccept
+- 完全・high-risk: accept非表示・送信なし、declineだけ送信
+- 本文不完全・normal-risk: accept非表示・送信なし、local holdはdecisionなし、declineだけ送信
+
+`--synthetic`はhost harnessとsanitized outputだけを検証します。実portは`--port`またはGit管理外の`--port-handle`で明示し、承認前は`--dry-run`だけを実行します。dry-runはproviderを生成せず、serial I/Oを開始しません。公開結果は固定stepとPASS/FAILだけに限定し、port、approval ID、本文、cwd、生NDJSON、時刻を含めません。
+
+300ms未満の物理キー操作とaccept非表示はwireだけでは自動証明できません。299/300ms境界のnative fixture、operatorの画面・キー確認、host recorderのdecision有無を組み合わせてlocal acceptanceとします。
+
+## 2026-07-21 pre-hardware validation
+
+- `approval-fixture --synthetic`: PASS
+- 実port選択の`approval-fixture --dry-run`: PASS、serial I/Oなし、Codex接続なし
+- publication boundary: PASS
+- Ruff: PASS
+- mypy: 42 source files PASS
+- pytest: 222 passed、3 skipped
+- Python sdist/wheel build: PASS
+- Firmware native fixture: 18/18 PASS
+- `cardputer_adv` build: PASS、RAM 32,252 bytes、Flash 482,165 bytes
+- `cardputer_adv_bringup` build: PASS、RAM 26,716 bytes、Flash 461,917 bytes
+
+この記録はhost harness、既存firmware境界、buildのpreflightです。実portは開いておらず、hardware PASSではありません。
+
 ## 未検証境界
 
-300ms guard境界の早押し、5行以上の本文を最下端までscrollする操作、high-risk表示の物理確認、長時間運転は未受入です。合成PASSをこれらの実機PASSとして扱いません。
+300ms guard境界の早押し、5行以上の本文を最下端までscrollする操作、high-risk表示の物理確認、長時間運転は未受入です。Issue #18用の合成fixtureと実port dry-runがPASSしても、hardware承認後の物理確認までは実機PASSとして扱いません。

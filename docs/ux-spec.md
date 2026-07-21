@@ -40,6 +40,7 @@ Effort候補は現在modelに対応する`model/list.data[].supportedReasoningEf
 - 選択肢と定型返信は選択後にEnterで確定する。
 - Approvalは`0`でlocal hold、`a`でaccept、`d`でdeclineを選び、Enter special-key stateで確定する。
 - Approval本文は`j` / `k`で下 / 上へscrollする。
+- Approval本文は1行38 UTF-8 bytes以下・最大8行に分割し、収まらない場合は`contentComplete=false`としてdevice acceptを隠す。
 - G0の500ms長押しは、表示画面ではなくfocus中slotの`turnActive`でinterrupt対象を決める。
 - app-serverの構造化質問は初期版でdeviceから回答しない。
 - `acceptForSession`、`cancel`、policy amendmentはhost側だけで扱う。

@@ -30,6 +30,8 @@
 - 追加semantic context付きrequestではhost acceptも禁止し、`decline`と`cancel`を変換しない
 - hostとdeviceのどちらから応答してもresolvedまでpendingを維持する
 - 同じapproval IDの残件数更新と再接続でguard、scroll、sendingを失わない
+- approval本文をfirmwareの1行表示上限38 UTF-8 bytes以下に分割し、表示されない右端を`contentComplete=true`として扱わない
+- 固定approval fixtureのsynthetic・dry-run・guided operator経路を検証し、出力へport、ID、本文、生NDJSONを出さない
 - controller runtimeがturn、pending、host response、interrupt、正常終了を一つのthreadで処理する
 - `requestUserInput`を短いhost IDへ投影し、生のRPC・question IDを表示しない
 - 複数質問を別local IDへ相関し、全件が揃った時点だけschemaどおりのnested mapを1回送る
@@ -66,6 +68,8 @@ App-server終了は処理中RPCとthread cleanupをdrainするため、controlle
 M4 host user-inputはCodex CLI 0.144.6生成schemaと合成app-serverで検証します。Controllerだけが`experimentalApi=true`へopt-inし、複数質問の部分蓄積と一括response、secret no-echo adapter、option/Other相関、pending lifecycle、interrupt時の破棄、Deviceへの`question` attentionを受入対象にします。実Codexで`requestUserInput`を発生させる経路は未検証であり、合成結果を実接続PASSへ昇格しません。
 
 Production実機のlocal acceptanceでは、実Codex turnのHOME/RUN、G0 interrupt、host-only cancel、incomplete file approvalのhold・accept禁止・物理decline、stale/reconnectを確認します。完全なlow-risk acceptと複数pendingは、実行処理を持たない2件のlocal fixtureで物理accept、残数、自動送り、物理decline、pending zeroを確認します。Stale状態からのhost接続開始〜active/full snapshotは6秒以内を合格とし、今回のbaselineは1,766msです。実測中に検出したEnter special-key判定と`wait`のapproval/timeout復帰には回帰テストがあります。
+
+Issue #18の追加受入は`cardputer-codex-controller approval-fixture --synthetic`でhost状態機械を先に検証し、実portでは同commandの`--dry-run`後に別承認を得て実行します。固定fixtureはcommandを実行せず、長文low-riskの300ms未満・本文末尾未到達・末尾到達後accept、high-riskのaccept非表示とdecline、本文不完全のaccept非表示・hold・declineを順に確認します。正確な299/300ms判定はfirmware native fixture、物理表示とキー操作はoperator確認、送信有無はhost recorderで分担して証拠化します。
 
 ## Hardware tests
 

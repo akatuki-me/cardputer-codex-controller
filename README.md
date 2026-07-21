@@ -99,6 +99,17 @@ cardputer-codex-controller bringup --port-handle local-private/device-port.txt -
 
 `--dry-run`を外す操作と診断firmwareの書き込みはhardware承認ゲートの対象です。実portでは物理入力を最大120秒待ちます。詳細な手順と検証済み範囲は[M1 bring-up](docs/m1/cardputer-bringup.md)を参照してください。
 
+## M3 approval安全境界fixture
+
+Codexやcommand実行を起動せず、固定の無害なapprovalだけをproduction firmwareへ送り、300ms guard、本文末尾、high-risk、本文不完全、hold、declineを案内付きで受入できます。最初に合成経路と実portのdry-runを実行します。
+
+```powershell
+cardputer-codex-controller approval-fixture --synthetic
+cardputer-codex-controller approval-fixture --port-handle local-private/device-port.txt --dry-run
+```
+
+実portで`--dry-run`を外す操作はhardware承認ゲートの対象です。実行中は画面の固定fixtureに対して案内どおり操作し、各確認後にhostへ`ok`を入力します。出力は固定stepとPASS/FAILだけで、port、approval ID、本文、cwd、生NDJSONを含めません。正確な299/300ms境界はnative fixture、物理キーと表示はhuman-attested local acceptanceとして組み合わせます。合成PASSやdry-runを実機PASSへ昇格しません。
+
 ## USB CDC E2E harness
 
 認証済みCodex app-server、host state reducer、合成USB CDCを1本につなぎ、Cardputerから届いた想定の`interrupt`がactive turnへ一度だけ転送されることを確認できます。
@@ -147,6 +158,7 @@ cardputer-codex-controller control --port-handle local-private/device-port.txt -
 - 実Codex・合成USB CDC E2E: 実装済み
 - M2 host runtime・SCR-HOME/RUN・G0 interrupt・stale/reconnect: 実Codexとproduction実機で受入済み
 - M3 approval coordinator・host response surface・物理accept/decline/hold・accept禁止guard・複数pending: production実機で受入済み
+- M3 hardening fixture: 合成・dry-run実装済み、300ms早押し・5行以上scroll・high-risk表示の追加実機受入は未実施
 - M4 host user-input: 複数質問の一括responseとsecret no-echo入力を合成app-server E2Eで受入済み
 - 実USB CDC controller E2E: 実Codexとproduction実機で受入済み
 - 専用`e2e` commandの実port経路: 未検証（production受入は`control` commandで実施）

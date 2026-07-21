@@ -5,6 +5,10 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from cardputer_codex_bridge.controller.approval_fixture import (
+    run_approval_fixture,
+    run_approval_fixture_dry_run,
+)
 from cardputer_codex_bridge.controller.demo import run_demo
 from cardputer_codex_bridge.controller.e2e import (
     run_e2e_dry_run,
@@ -82,6 +86,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--dry-run",
         action="store_true",
         help="設定だけを検証しserial I/OとCodexを起動しない",
+    )
+    approval_fixture = subcommands.add_parser(
+        "approval-fixture",
+        help="Codex非依存の固定fixtureでM3 approval安全境界を受入",
+    )
+    approval_fixture_source = approval_fixture.add_mutually_exclusive_group(required=True)
+    approval_fixture_source.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="実portを使わない合成CDC",
+    )
+    approval_fixture_source.add_argument("--port", help="この実行だけに使う明示port")
+    approval_fixture_source.add_argument(
+        "--port-handle",
+        type=Path,
+        help="Git管理外の1行local handle file",
+    )
+    approval_fixture.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="選択だけを検証しserial I/Oを起動しない",
     )
     args = parser.parse_args(argv)
     if args.command == "demo":
@@ -184,6 +209,38 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except Exception as error:
             print(f"control FAIL {type(error).__name__}", file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "approval-fixture":
+        try:
+            if args.synthetic:
+                selected_port = "synthetic"
+            else:
+                selected_port = resolve_port(
+                    explicit_port=args.port,
+                    handle_file=args.port_handle,
+                )
+            if args.dry_run:
+                run_approval_fixture_dry_run(sys.stdout)
+                return 0
+            fixture_provider: SerialProvider
+            fixture_synthetic: SyntheticSerialProvider | None
+            if args.synthetic:
+                synthetic_fixture_provider = SyntheticSerialProvider()
+                fixture_provider = synthetic_fixture_provider
+                fixture_synthetic = synthetic_fixture_provider
+            else:
+                fixture_provider = PySerialProvider()
+                fixture_synthetic = None
+            run_approval_fixture(
+                sys.stdout,
+                sys.stdin,
+                port=selected_port,
+                provider=fixture_provider,
+                synthetic_device=fixture_synthetic,
+            )
+        except Exception as error:
+            print(f"approval_fixture FAIL {type(error).__name__}", file=sys.stderr)
             return 1
         return 0
     parser.error("unknown command")
